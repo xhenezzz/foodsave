@@ -27,12 +27,16 @@ public class BusinessProfileService {
             CreateBusinessProfileRequest request
     ) {
 
-        UserPrincipal principal = getCurrentUserPrincipal();
+        UserPrincipal principal =
+                getCurrentUserPrincipal();
 
-        User user = userRepository.findById(principal.getId())
-                .orElseThrow(() ->
-                        new RuntimeException("Пользователь не найден")
-                );
+        User user =
+                userRepository.findById(principal.getId())
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Пользователь не найден"
+                                )
+                        );
 
         if (user.getRole() != Role.BUSINESS) {
             throw new RuntimeException(
@@ -46,18 +50,39 @@ public class BusinessProfileService {
             );
         }
 
-        BusinessProfile profile = new BusinessProfile();
+        if (user.getCity() == null) {
+            throw new RuntimeException(
+                    "У пользователя не указан город"
+            );
+        }
+
+        BusinessProfile profile =
+                new BusinessProfile();
 
         profile.setUser(user);
-        profile.setBusinessName(request.getBusinessName());
-        profile.setDescription(request.getDescription());
-        profile.setAddress(request.getAddress());
+        profile.setBusinessName(
+                request.getBusinessName()
+        );
+        profile.setDescription(
+                request.getDescription()
+        );
+        profile.setAddress(
+                request.getAddress()
+        );
 
         GeocodingService.Coordinates coordinates =
-                geocodingService.geocode(request.getAddress());
+                geocodingService.geocode(
+                        user.getCity(),
+                        request.getAddress()
+                );
 
-        profile.setLatitude(coordinates.latitude());
-        profile.setLongitude(coordinates.longitude());
+        profile.setLatitude(
+                coordinates.latitude()
+        );
+
+        profile.setLongitude(
+                coordinates.longitude()
+        );
 
         BusinessProfile saved =
                 businessProfileRepository.save(profile);
@@ -68,10 +93,12 @@ public class BusinessProfileService {
     @Transactional(readOnly = true)
     public BusinessProfileResponse getMyProfile() {
 
-        UserPrincipal principal = getCurrentUserPrincipal();
+        UserPrincipal principal =
+                getCurrentUserPrincipal();
 
         BusinessProfile profile =
-                businessProfileRepository.findByUserId(principal.getId())
+                businessProfileRepository
+                        .findByUserId(principal.getId())
                         .orElseThrow(() ->
                                 new RuntimeException(
                                         "Профиль бизнеса не найден"
@@ -86,25 +113,55 @@ public class BusinessProfileService {
             UpdateBusinessProfileRequest request
     ) {
 
-        UserPrincipal principal = getCurrentUserPrincipal();
+        UserPrincipal principal =
+                getCurrentUserPrincipal();
 
         BusinessProfile profile =
-                businessProfileRepository.findByUserId(principal.getId())
+                businessProfileRepository
+                        .findByUserId(principal.getId())
                         .orElseThrow(() ->
                                 new RuntimeException(
                                         "Профиль бизнеса не найден"
                                 )
                         );
 
-        profile.setBusinessName(request.getBusinessName());
-        profile.setDescription(request.getDescription());
-        profile.setAddress(request.getAddress());
+        User user = profile.getUser();
 
+        if (user.getCity() == null) {
+            throw new RuntimeException(
+                    "У пользователя не указан город"
+            );
+        }
+
+        profile.setBusinessName(
+                request.getBusinessName()
+        );
+
+        profile.setDescription(
+                request.getDescription()
+        );
+
+        profile.setAddress(
+                request.getAddress()
+        );
+
+        /*
+         * При изменении адреса заново получаем координаты.
+         * Город снова берём из User.
+         */
         GeocodingService.Coordinates coordinates =
-                geocodingService.geocode(request.getAddress());
+                geocodingService.geocode(
+                        user.getCity(),
+                        request.getAddress()
+                );
 
-        profile.setLatitude(coordinates.latitude());
-        profile.setLongitude(coordinates.longitude());
+        profile.setLatitude(
+                coordinates.latitude()
+        );
+
+        profile.setLongitude(
+                coordinates.longitude()
+        );
 
         BusinessProfile updated =
                 businessProfileRepository.save(profile);

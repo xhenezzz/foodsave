@@ -32,4 +32,7 @@ public class FoodListingResponse {
     private Double businessRating;
 
     private Double distanceKm;
+
+    private Double latitude;
+    private Double longitude;
 }

@@ -5,6 +5,7 @@ import com.example.FoodSave.profile.dto.FoodSaveQrResponse;
 import com.example.FoodSave.profile.dto.ProfileResponse;
 import com.example.FoodSave.profile.dto.UpdateProfileRequest;
 import com.example.FoodSave.profile.service.ProfileService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -30,11 +31,10 @@ public class ProfileController {
 
     @PutMapping("/password")
     public ResponseEntity<Void> changePassword(
-            @RequestBody ChangePasswordRequest request
+            @Valid @RequestBody ChangePasswordRequest request
     ) {
         profileService.changePassword(request);
-
-        return ResponseEntity.ok().build();
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/qr")

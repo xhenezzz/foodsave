@@ -1,5 +1,6 @@
 package com.example.FoodSave.profile.dto;
 
+import com.example.FoodSave.auth.entity.City;
 import com.example.FoodSave.auth.entity.Role;
 import com.example.FoodSave.auth.entity.VerificationStatus;
 import lombok.Data;
@@ -15,7 +16,7 @@ public class ProfileResponse {
     private String username;
     private String email;
     private String phoneNumber;
-    private String city;
+    private City city;
 
     private Role role;
     private VerificationStatus verificationStatus;
@@ -32,7 +33,7 @@ public class ProfileResponse {
             String username,
             String email,
             String phoneNumber,
-            String city,
+            City city,
             Role role,
             VerificationStatus verificationStatus,
             Integer foodPoints,

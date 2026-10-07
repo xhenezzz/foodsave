@@ -16,6 +16,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -81,6 +82,32 @@ public class FoodListingService {
 
             throw new RuntimeException(
                     "Цена должна быть больше 0"
+            );
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+
+        if (request.getPickupStart().isBefore(now)) {
+            throw new RuntimeException(
+                    "Время начала получения не может быть в прошлом"
+            );
+        }
+
+        if (request.getPickupEnd().isBefore(now)) {
+            throw new RuntimeException(
+                    "Время окончания получения не может быть в прошлом"
+            );
+        }
+
+        if (request.getExpiresAt().isBefore(now)) {
+            throw new RuntimeException(
+                    "Время истечения предложения не может быть в прошлом"
+            );
+        }
+
+        if (request.getExpiresAt().isBefore(request.getPickupEnd())) {
+            throw new RuntimeException(
+                    "Время истечения предложения не может быть раньше окончания получения"
             );
         }
 
@@ -421,7 +448,9 @@ public class FoodListingService {
                 listing.getStatus(),
                 businessProfile.getBusinessName(),
                 Math.round(rating * 10.0) / 10.0,
-                Math.round(distance * 100.0) / 100.0
+                null,
+                businessProfile.getLatitude(),
+                businessProfile.getLongitude()
         );
     }
 
@@ -495,7 +524,9 @@ public class FoodListingService {
                 listing.getStatus(),
                 businessProfile.getBusinessName(),
                 Math.round(rating * 10.0) / 10.0,
-                null
+                null,
+                businessProfile.getLatitude(),
+                businessProfile.getLongitude()
         );
     }
 }

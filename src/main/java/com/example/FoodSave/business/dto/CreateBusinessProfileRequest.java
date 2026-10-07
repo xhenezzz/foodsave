@@ -1,5 +1,6 @@
 package com.example.FoodSave.business.dto;
 
+import com.example.FoodSave.auth.entity.City;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;

@@ -20,9 +20,7 @@ public class OrderController {
 
     private final OrderService orderService;
 
-    // CUSTOMER — создать заказ
     @PostMapping
-    @PreAuthorize("hasRole('CUSTOMER')")
     public ResponseEntity<OrderResponse> createOrder(
             @RequestBody CreateOrderRequest request
     ) {
@@ -31,49 +29,13 @@ public class OrderController {
         );
     }
 
-    // CUSTOMER — свои заказы
     @GetMapping("/my")
-    @PreAuthorize("hasRole('CUSTOMER')")
     public ResponseEntity<List<OrderResponse>> getMyOrders() {
         return ResponseEntity.ok(
                 orderService.getMyOrders()
         );
     }
 
-    // CUSTOMER — получить свой заказ
-    @GetMapping("/{id}")
-    @PreAuthorize("hasRole('CUSTOMER')")
-    public ResponseEntity<OrderResponse> getOrderById(
-            @PathVariable UUID id
-    ) {
-        return ResponseEntity.ok(
-                orderService.getOrderById(id)
-        );
-    }
-
-    // CUSTOMER — отменить свой заказ
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('CUSTOMER')")
-    public ResponseEntity<Void> cancelOrder(
-            @PathVariable UUID id
-    ) {
-        orderService.cancelOrder(id);
-
-        return ResponseEntity.noContent().build();
-    }
-
-    // CUSTOMER — получить QR заказа
-    @GetMapping("/{id}/qr")
-    @PreAuthorize("hasRole('CUSTOMER')")
-    public ResponseEntity<OrderQrResponse> getOrderQr(
-            @PathVariable UUID id
-    ) {
-        return ResponseEntity.ok(
-                orderService.getOrderQr(id)
-        );
-    }
-
-    // BUSINESS — отсканировать QR клиента
     @PostMapping("/scan")
     @PreAuthorize("hasRole('BUSINESS')")
     public ResponseEntity<OrderResponse> scanOrderQr(
@@ -84,5 +46,32 @@ public class OrderController {
                         request.getQrToken()
                 )
         );
+    }
+
+    @GetMapping("/{id}/qr")
+    public ResponseEntity<OrderQrResponse> getOrderQr(
+            @PathVariable UUID id
+    ) {
+        return ResponseEntity.ok(
+                orderService.getOrderQr(id)
+        );
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<OrderResponse> getOrderById(
+            @PathVariable UUID id
+    ) {
+        return ResponseEntity.ok(
+                orderService.getOrderById(id)
+        );
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> cancelOrder(
+            @PathVariable UUID id
+    ) {
+        orderService.cancelOrder(id);
+
+        return ResponseEntity.noContent().build();
     }
 }
