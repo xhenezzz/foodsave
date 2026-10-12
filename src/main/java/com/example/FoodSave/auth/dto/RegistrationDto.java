@@ -35,6 +35,5 @@ public class RegistrationDto {
     private String password;
     @NotNull(message = "Город обязателен")
     private City city;
-    @NotNull(message = "Роль обязательна")
     private Role role;
 }

@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 
@@ -85,7 +86,10 @@ public class FoodListingService {
             );
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now =
+                LocalDateTime.now(
+                        ZoneId.of("Asia/Almaty")
+                );
 
         if (request.getPickupStart().isBefore(now)) {
             throw new RuntimeException(
@@ -448,7 +452,7 @@ public class FoodListingService {
                 listing.getStatus(),
                 businessProfile.getBusinessName(),
                 Math.round(rating * 10.0) / 10.0,
-                null,
+                Math.round(distance * 10.0) / 10.0,
                 businessProfile.getLatitude(),
                 businessProfile.getLongitude()
         );

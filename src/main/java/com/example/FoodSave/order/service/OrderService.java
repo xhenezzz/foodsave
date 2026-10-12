@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 
@@ -99,7 +100,9 @@ public class OrderService {
                         );
 
         LocalDateTime now =
-                LocalDateTime.now();
+                LocalDateTime.now(
+                        ZoneId.of("Asia/Almaty")
+                );
 
         Order order = new Order();
 
@@ -419,7 +422,9 @@ public class OrderService {
 
         // Проверяем время получения
         LocalDateTime now =
-                LocalDateTime.now();
+                LocalDateTime.now(
+                        ZoneId.of("Asia/Almaty")
+                );
 
         if (now.isBefore(
                 order.getPickupStart()

@@ -54,7 +54,7 @@ public class AuthService {
 
         user.setFsId(UUID.randomUUID());
 
-        user.setRole(dto.getRole());
+        user.setRole(Role.CUSTOMER);
 
         user.setVerificationStatus(
                 VerificationStatus.UNVERIFIED
