@@ -1,15 +1,41 @@
-# FoodSave Frontend
+# FoodSave Frontend — 3 страницы
 
-Updated React + TypeScript + Vite frontend for the current FoodSave modular-monolith backend.
+Обновлён **твой собственный** проект из архива `foodsave-frontend(2).zip`. React 19 + TypeScript + Vite, исходные цвета и модальные окна сохранены.
 
-## Run
+## Запуск (Windows / PowerShell)
 
-```bash
+```powershell
+cd foodsave-frontend
 npm install
 npm run dev
 ```
 
-Backend: http://localhost:8081
-Frontend: Vite default port (usually http://localhost:5173)
+Открой `http://localhost:5173`. Backend ожидается на `http://localhost:8081/api` (если адрес другой, исправь `API_URL` в `src/api.ts`).
 
-The UI now covers auth, listings, nearby search, BusinessProfile, orders, test payment, order QR, business QR scanning, Impact Stats, reviews, FoodPoints/reliability display and business management.
+## Страницы
+
+- `/discover` — только для покупателя: каталог своего города, поиск рядом и карта.
+- `/orders` — только для покупателя: бронирования, оплата, QR и история.
+- `/business` — только для бизнеса: профиль, свои предложения, создание/редактирование и сканирование QR.
+
+Профиль/настройки, логин/регистрация, отзывы и статистика остаются модальными окнами (не дополнительными страницами).
+
+Навигация использует браузерный History API (pushState/popstate). Отдельный `react-router-dom` не установлен, поэтому новых npm-зависимостей для routing нет.
+
+## Проверки
+
+```powershell
+npx tsc --noEmit
+npm test       # Требуется Node.js 22 или новее
+npm run build
+```
+
+**Важно:** API должен безопасно фильтровать бизнес-объявления на стороне сервера. Город и статус оплаты также желательно вернуть в DTO. Подробная диагностика и требования в `BUG_AUDIT.md`.
+
+## Рекомендации v1 (новое)
+
+- На странице `/discover` появились `Рекомендуем`, `Максимальная скидка`, `Дешевле`, `Ближе ко мне` (только после разрешения геолокации).
+- `src/recommendations.ts`: rule-based рейтинг с весами скидки 40%, рейтинга 25%, наличия 15%, расстояния 20%.
+- При отсутствии координат и/или отзывов отсутствующие критерии исключаются; веса автоматически нормализуются.
+- Три первых предложения получают поясняющий бейдж, а на карте их маркеры подсвечиваются.
+- Сортировка выполняется **на клиенте** по данным API, дополнительных backend-endpoint не требуется. Java-версия алгоритма и рекомендации по интеграции в Spring Boot отдельно в архиве (`backend-patch/`, `RECOMMENDATION_BACKEND_INTEGRATION.md`).

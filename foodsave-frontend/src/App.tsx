@@ -1,119 +1,343 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
-import {
-  ArrowRight, Building2, Camera, CheckCircle2, Clock3, Copy, CreditCard, Leaf,
-  LocateFixed, LogOut, MapPin, PackageCheck, Pencil, Plus, QrCode, RefreshCw,
-  ScanLine, ShieldCheck, ShoppingBag, Star, Ticket, Trash2, UserRound, X
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Leaf, LogOut, RefreshCw, ScanLine } from "lucide-react";
 import { api } from "./api";
+import { parseImpact } from "./impact";
 import type { BusinessProfile, City, FoodSaveQrResponse, Impact, Listing, Order, Profile, Review } from "./types";
+import { errText, confirmedPayment, coordinatesCity, listingsForCity, listingAvailable, listingCity, orderPaidByServer, cityName } from "./utils";
+import { AuthModal, BusinessModal, ImpactModal, Landing, ListingModal, OrderModal, PasswordModal, ProfileModal, QrModal, ReviewModal, ScannerModal, Toast } from "./components";
+import { DiscoverPage } from "./pages/DiscoverPage";
+import { OrdersPage } from "./pages/OrdersPage";
+import { BusinessPage } from "./pages/BusinessPage";
 
-const money=(v:number)=>new Intl.NumberFormat("ru-RU").format(v)+" ₸";
-const dt=(v:string)=>new Date(v).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
-const time=(v:string)=>new Date(v).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});
-const disc=(a:number,b:number)=>a?Math.max(0,Math.round((1-b/a)*100)):0;
-const qrImg=(data:string)=>`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(data)}`;
-const errText=(e:unknown,f:string)=>e instanceof Error?e.message:f;
-const cityName=(c:City)=>c==="ALMATY"?"Алматы":"Астана";
-const toLocal=(x:Date)=>{const p=(n:number)=>String(n).padStart(2,"0");return `${x.getFullYear()}-${p(x.getMonth()+1)}-${p(x.getDate())}T${p(x.getHours())}:${p(x.getMinutes())}`};
-
-let leafletPromise: Promise<any>|null=null;
-function loadLeaflet(){
-  if((window as any).L) return Promise.resolve((window as any).L);
-  if(leafletPromise) return leafletPromise;
-  leafletPromise=new Promise((resolve,reject)=>{
-    const css=document.createElement("link"); css.rel="stylesheet"; css.href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"; document.head.appendChild(css);
-    const script=document.createElement("script"); script.src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"; script.onload=()=>resolve((window as any).L); script.onerror=reject; document.body.appendChild(script);
-  });
-  return leafletPromise;
+type Route = "/discover" | "/orders" | "/business";
+type Dialog = "profile" | "password" | "listing" | "business" | "order" | "qr" | "review" | "scanner" | "impact" | null;
+type ToastValue = {type: "success" | "error"; text: string} | null;
+const roleHome = (profile: Profile): Route => profile.role === "BUSINESS" ? "/business" : "/discover";
+function readRoute(): Route | null {
+  if (location.pathname === "/discover") return "/discover";
+  if (location.pathname === "/orders") return "/orders";
+  if (location.pathname === "/business") return "/business";
+  return null;
+}
+function readPaidIds(userId: string): Set<string> {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(`foodsave_paid_${userId}`) || "[]");
+    return new Set(Array.isArray(stored) ? stored.filter(x => typeof x === "string") : []);
+  } catch { return new Set(); }
 }
 
-function MapView({user, listings}:{user:{lat:number;lon:number};listings:Listing[]}){
-  const ref=useRef<HTMLDivElement|null>(null); const mapRef=useRef<any>(null);
-  useEffect(()=>{
-    let alive=true;
-    loadLeaflet().then((L:any)=>{
-      if(!alive||!ref.current) return;
-      if(mapRef.current) mapRef.current.remove();
-      const map=L.map(ref.current).setView([user.lat,user.lon],13);
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap contributors"}).addTo(map);
-      L.circleMarker([user.lat,user.lon],{radius:8,color:"#173c24",fillColor:"#65a54f",fillOpacity:1}).addTo(map).bindPopup("Вы здесь");
-      const valid=listings.filter(l=>Number.isFinite(l.latitude)&&Number.isFinite(l.longitude));
-      valid.forEach(l=>L.marker([l.latitude,l.longitude]).addTo(map).bindPopup(`<b>${l.businessName||"Бизнес"}</b><br/>${l.title}<br/>${l.distanceKm!=null?l.distanceKm.toFixed(1)+" км":""}`));
-      if(valid.length){const group=L.featureGroup(valid.map((l:Listing)=>L.marker([l.latitude!,l.longitude!])));group.addLayer(L.circleMarker([user.lat,user.lon]));map.fitBounds(group.getBounds().pad(0.2));}
-      mapRef.current=map; setTimeout(()=>map.invalidateSize(),100);
-    }).catch(()=>{});
-    return()=>{alive=false;if(mapRef.current){mapRef.current.remove();mapRef.current=null}};
-  },[user.lat,user.lon,listings]);
-  return <div className="real-map" ref={ref}><div className="map-loading">Загружаю карту…</div></div>;
-}
+export default function App() {
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [authenticated, setAuthenticated] = useState(() => Boolean(localStorage.getItem("foodsave_token")));
+  const [initializing, setInitializing] = useState(() => Boolean(localStorage.getItem("foodsave_token")));
+  const [route, setRoute] = useState<Route | null>(readRoute);
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [myListings, setMyListings] = useState<Listing[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [business, setBusiness] = useState<BusinessProfile | null>(null);
+  const [rating, setRating] = useState<number | null>(null);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [impact, setImpact] = useState<Impact | null>(null);
+  const [impactLoading, setImpactLoading] = useState(false);
+  const [impactError, setImpactError] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const [selected, setSelected] = useState<Listing | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [qr, setQr] = useState<FoodSaveQrResponse | null>(null);
+  const [qrKind, setQrKind] = useState<"order"|"profile">("order");
+  const [toast, setToast] = useState<ToastValue>(null);
+  const [busy, setBusy] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [paidIds, setPaidIds] = useState<Set<string>>(new Set());
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authOpen, setAuthOpen] = useState(false);
+  const [nearby, setNearby] = useState(false);
+  const [coords, setCoords] = useState<{lat:number;lon:number} | null>(null);
 
-type Modal="profile"|"password"|"listing"|"business"|"order"|"qr"|"review"|"scanner"|"impact"|null;
-type Toast={type:"success"|"error";text:string}|null;
+  function navigate(next: Route, replace = false) {
+    if (location.pathname !== next) {
+      if (replace) history.replaceState({}, "", next);
+      else history.pushState({}, "", next);
+    }
+    setRoute(next);
+    window.scrollTo({top: 0, behavior: "auto"});
+  }
+  useEffect(() => {
+    const handlePop = () => setRoute(readRoute());
+    window.addEventListener("popstate", handlePop);
+    return () => window.removeEventListener("popstate", handlePop);
+  }, []);
+  useEffect(() => {
+    if (authenticated) void refresh(true);
+    else setInitializing(false);
+    // Выполняется один раз при старте. После логина refresh вызывается явно.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!toast) return;
+    const timeout = setTimeout(() => setToast(null), 3700);
+    return () => clearTimeout(timeout);
+  }, [toast]);
+  useEffect(() => {
+    if (!profile) return;
+    const target = roleHome(profile);
+    const validRoute = profile.role === "BUSINESS" ? route === "/business" : route === "/discover" || route === "/orders";
+    if (!validRoute) navigate(target, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.role, route]);
 
-export default function App(){
-  const [profile,setProfile]=useState<Profile|null>(null),[listings,setListings]=useState<Listing[]>([]),[myListings,setMyListings]=useState<Listing[]>([]),[orders,setOrders]=useState<Order[]>([]),[business,setBusiness]=useState<BusinessProfile|null>(null),[impact,setImpact]=useState<Impact|null>(null),[reviews,setReviews]=useState<Review[]>([]),[rating,setRating]=useState<number|null>(null);
-  const [modal,setModal]=useState<Modal>(null),[selected,setSelected]=useState<Listing|null>(null),[selectedOrder,setSelectedOrder]=useState<Order|null>(null),[qr,setQr]=useState<FoodSaveQrResponse|null>(null),[toast,setToast]=useState<Toast>(null),[loading,setLoading]=useState(false),[auth,setAuth]=useState<"login"|"register">("login"),[authOpen,setAuthOpen]=useState(false),[nearby,setNearby]=useState(false),[coords,setCoords]=useState<{lat:number;lon:number}|null>(null);
-  const logged=Boolean(localStorage.getItem("foodsave_token")), isBusiness=profile?.role==="BUSINESS";
-  const stats=useMemo(()=>({saved:orders.filter(o=>o.status==="COMPLETED").reduce((s,o)=>s+o.quantity,0),spent:orders.reduce((s,o)=>s+o.totalPrice,0)}),[orders]);
-  useEffect(()=>{if(logged) refresh()},[]); useEffect(()=>{if(!toast)return;const x=setTimeout(()=>setToast(null),3500);return()=>clearTimeout(x)},[toast]);
+  async function refresh(firstLoad = false) {
+    setBusy(true);
+    try {
+      const person = await api.getProfile();
+      setProfile(person);
+      setPaidIds(readPaidIds(person.id));
+      if (person.role === "BUSINESS") {
+        // Никогда не используем публичный /listings для кабинета бизнеса.
+        const [biz, mine, userRating, userReviews] = await Promise.all([
+          api.getBusinessProfile().catch(error => {
+            if (/404|business profile not found|профиль бизнеса не найден/i.test(String(error))) return null;
+            throw error;
+          }),
+          api.getMyListings(),
+          api.getMyRating().catch(() => null),
+          api.getMyReviews().catch(() => [])
+        ]);
+        setBusiness(biz);
+        setMyListings(mine.filter(item => !item.ownerId || item.ownerId === person.id || item.ownerId === biz?.id));
+        setRating(userRating);
+        setReviews(userReviews);
+        setListings([]);
+        setOrders([]);
+      } else {
+        const validNearby = nearby && coords && coordinatesCity(coords.lat, coords.lon) === person.city;
+        if (nearby && !validNearby) setNearByOff();
+        const [all, myOrders] = await Promise.all([
+          validNearby && coords
+            ? api.getNearbyListings(coords.lat, coords.lon, 10, person.city) : api.getListings(person.city),
+          api.getMyOrders()
+        ]);
+        setListings(all);
+        setOrders(myOrders);
+        setBusiness(null);
+        setMyListings([]);
+        setReviews([]);
+        setRating(null);
+      }
+    } catch (error) {
+      const message = errText(error, "Ошибка загрузки данных");
+      if (/HTTP 401|HTTP 403|unauthorized|invalid token/i.test(message) && firstLoad) {
+        localStorage.removeItem("foodsave_token");
+        setAuthenticated(false);
+        setProfile(null);
+      } else setToast({type:"error",text:message});
+    } finally {
+      setBusy(false);
+      setInitializing(false);
+    }
+  }
 
-  async function refresh(){setLoading(true);try{const [p,l,o]=await Promise.all([api.getProfile(),api.getListings(),api.getMyOrders()]);setProfile(p);setListings(l);setOrders(o);if(p.role==="BUSINESS"){const [b,ml,r]=await Promise.all([api.getBusinessProfile().catch(()=>null),api.getMyListings().catch(()=>[]),api.getMyReviews().catch(()=>[])]);setBusiness(b);setMyListings(ml);setReviews(r);setRating(await api.getMyRating().catch(()=>null))}else{setBusiness(null);setMyListings([])}}catch(e){setToast({type:"error",text:errText(e,"Не удалось загрузить данные")})}finally{setLoading(false)}}
-  async function login(email:string,password:string){setLoading(true);try{const r=await api.login({email,password});localStorage.setItem("foodsave_token",r.token);setAuthOpen(false);await refresh();setToast({type:"success",text:"Добро пожаловать в FoodSave"})}catch(e){setToast({type:"error",text:errText(e,"Ошибка входа")})}finally{setLoading(false)}}
-  async function register(data:{username:string;email:string;phoneNumber:string;password:string;city:City}){setLoading(true);try{const r=await api.register(data);localStorage.setItem("foodsave_token",r.token);setAuthOpen(false);await refresh();setToast({type:"success",text:"Аккаунт создан"})}catch(e){setToast({type:"error",text:errText(e,"Ошибка регистрации")})}finally{setLoading(false)}}
-  function logout(){localStorage.removeItem("foodsave_token");setProfile(null);setOrders([]);setListings([]);setBusiness(null);setMyListings([])}
-  async function locate(){if(!navigator.geolocation){setToast({type:"error",text:"Браузер не поддерживает геолокацию"});return}navigator.geolocation.getCurrentPosition(async p=>{const c={lat:p.coords.latitude,lon:p.coords.longitude};setCoords(c);setNearby(true);try{setListings(await api.getNearbyListings(c.lat,c.lon,10))}catch(e){setToast({type:"error",text:errText(e,"Не удалось получить предложения рядом")})}},()=>setToast({type:"error",text:"Разреши геолокацию в браузере"}),{enableHighAccuracy:true,timeout:10000})}
-  async function createOrder(l:Listing,q:number){try{const o=await api.createOrder(l.id,q);setSelected(null);setSelectedOrder(o);setModal(null);await refresh();setToast({type:"success",text:"Заказ создан. Теперь его можно оплатить"})}catch(e){setToast({type:"error",text:errText(e,"Не удалось создать заказ")})}}
-  async function pay(o:Order){try{await api.payForOrder(o.id);const q=await api.getOrderQr(o.id);setQr({fsId:o.fsId,qrData:q.qrData});setSelectedOrder(o);setModal("qr");await refresh();setToast({type:"success",text:"Оплата успешна. Покажи QR бизнесу при получении"})}catch(e){setToast({type:"error",text:errText(e,"Не удалось оплатить заказ")})}}
-  async function loadImpact(){try{setImpact(await api.getImpact());setModal("impact")}catch(e){setToast({type:"error",text:errText(e,"Не удалось загрузить статистику")})}}
-  async function review(order:Order,r:number,c:string){try{await api.createReview({orderId:order.id,rating:r,comment:c});setModal(null);await refresh();setToast({type:"success",text:"Спасибо за отзыв"})}catch(e){setToast({type:"error",text:errText(e,"Не удалось оставить отзыв")})}}
+  async function login(email:string,password:string) {
+    setBusy(true);
+    try {
+      const result = await api.login({email,password});
+      localStorage.setItem("foodsave_token",result.token);
+      setAuthenticated(true);
+      setAuthOpen(false);
+      await refresh();
+      setToast({type:"success",text:"Добро пожаловать в FoodSave"});
+    } catch(error) {setToast({type:"error",text:errText(error,"Не удалось войти")});}
+    finally {setBusy(false);}
+  }
+  async function register(data:{username:string;email:string;phoneNumber:string;password:string;city:City;role:"CUSTOMER"|"BUSINESS"}) {
+    setBusy(true);
+    try {
+      const result = await api.register(data);
+      localStorage.setItem("foodsave_token",result.token);
+      setAuthenticated(true);
+      setAuthOpen(false);
+      await refresh();
+      setToast({type:"success",text:"Аккаунт создан"});
+    } catch(error) {setToast({type:"error",text:errText(error,"Не удалось зарегистрироваться")});}
+    finally {setBusy(false);}
+  }
+  function logout() {
+    localStorage.removeItem("foodsave_token");
+    setAuthenticated(false);setProfile(null);setListings([]);setOrders([]);setMyListings([]);setBusiness(null);
+    setPaidIds(new Set());setQr(null);setDialog(null);setImpact(null);setImpactError(null);setNearByOff();
+    history.replaceState({}, "", "/");setRoute(null);
+  }
+  function setNearByOff() {setNearby(false);setCoords(null);}
+  async function showAllListings() {
+    if (!profile) return;
+    setNearByOff();
+    setBusy(true);
+    try {setListings(await api.getListings(profile.city));}
+    catch(error){setToast({type:"error",text:errText(error,"Не удалось загрузить предложения")});}
+    finally{setBusy(false);}
+  }
+  function locate() {
+    if (!navigator.geolocation) {setToast({type:"error",text:"Браузер не поддерживает геолокацию"});return;}
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(async position => {
+      const current={lat:position.coords.latitude,lon:position.coords.longitude};
+      try {
+        const geoCity = coordinatesCity(current.lat, current.lon);
+        if (geoCity !== profile?.city) {
+          setToast({type:"error",text:geoCity
+            ? `Сейчас ты находишься в городе ${cityName(geoCity)}, а в профиле выбран ${cityName(profile!.city)}. Измени город в профиле для поиска рядом.`
+            : "Не удалось определить город по координатам. Проверь геолокацию или открой предложения своего города."});
+          return;
+        }
+        const nearbyListings=await api.getNearbyListings(current.lat,current.lon,10,profile.city);
+        setCoords(current);setNearby(true);setListings(nearbyListings);
+      } catch(error){setToast({type:"error",text:errText(error,"Ошибка загрузки ближайших предложений")});}
+      finally {setLocating(false);}
+    },()=>{setLocating(false);setToast({type:"error",text:"Разреши доступ к геолокации"});},{enableHighAccuracy:true,timeout:10000});
+  }
 
-  if(!logged||!profile)return <><Landing onAuth={m=>{setAuth(m);setAuthOpen(true)}}/>{authOpen&&<AuthModal mode={auth} loading={loading} onClose={()=>setAuthOpen(false)} onMode={setAuth} onLogin={login} onRegister={register}/>} {toast&&<Toast t={toast}/>}</>;
+  const customerListings=useMemo(() => {
+    if (!profile) return [];
+    return listingsForCity(listings, profile.city);
+  }, [listings,profile]);
+  const hiddenUnknown=useMemo(() => listings.filter(item => listingAvailable(item) && listingCity(item) === null).length,[listings]);
+  const confirmedPaid = useMemo(() => new Set(orders.filter(order => orderPaidByServer(order) || (!order.paid && !order.paymentStatus && paidIds.has(order.id))).map(order=>order.id)),[orders,paidIds]);
+
+  async function createOrder(listing:Listing,quantity:number) {
+    try {
+      await api.createOrder(listing.id,quantity);
+      setSelected(null);setDialog(null);
+      await refresh();
+      navigate("/orders");
+      setToast({type:"success",text:"Заказ создан. Теперь его можно оплатить."});
+    }catch(error){setToast({type:"error",text:errText(error,"Не удалось забронировать")});}
+  }
+  async function pay(order:Order) {
+    if (payingId) return;
+    setPayingId(order.id);
+    try {
+      const payment=await api.payForOrder(order.id);
+      if (!confirmedPayment(payment?.status)) throw new Error(`Платёж не подтверждён. Статус: ${payment?.status || "неизвестен"}`);
+      const userId=profile!.id;
+      const updated=new Set(readPaidIds(userId));updated.add(order.id);
+      localStorage.setItem(`foodsave_paid_${userId}`,JSON.stringify([...updated]));
+      setPaidIds(updated);
+      setToast({type:"success",text:"Оплата подтверждена. QR доступен в заказе."});
+      // Ошибка получения QR не откатывает подтверждённую оплату.
+      try {const orderQr=await api.getOrderQr(order.id);setQr({fsId:order.fsId,qrData:orderQr.qrData});setSelectedOrder(order);setQrKind("order");setDialog("qr");}
+      catch {setToast({type:"success",text:"Оплачено. QR можно открыть позже из заказа."});}
+      await refresh();
+    }catch(error){setToast({type:"error",text:errText(error,"Не удалось оплатить")});}
+    finally {setPayingId(null);}
+  }
+  async function showOrderQr(order:Order){
+    try {const orderQr=await api.getOrderQr(order.id);setQr({fsId:order.fsId,qrData:orderQr.qrData});setSelectedOrder(order);setQrKind("order");setDialog("qr");}
+    catch(error){setToast({type:"error",text:errText(error,"QR пока недоступен")});}
+  }
+  async function cancelOrder(order:Order){
+    if (!window.confirm("Отменить бронирование?")) return;
+    try {await api.cancelOrder(order.id);await refresh();setToast({type:"success",text:"Заказ отменён"});}
+    catch(error){setToast({type:"error",text:errText(error,"Не удалось отменить")});}
+  }
+  async function loadImpact(){
+    setDialog("impact");
+    setImpactLoading(true);
+    setImpactError(null);
+    setImpact(null);
+    try {
+      const response = await api.getImpact();
+      setImpact(parseImpact(response));
+    } catch (error) {
+      setImpactError(errText(error, "Не удалось загрузить статистику"));
+    } finally {
+      setImpactLoading(false);
+    }
+  }
+  async function review(order:Order,ratingValue:number,comment:string) {
+    try {await api.createReview({orderId:order.id,rating:ratingValue,comment});setDialog(null);await refresh();setToast({type:"success",text:"Отзыв опубликован"});}
+    catch(error){setToast({type:"error",text:errText(error,"Не удалось отправить отзыв")});}
+  }
+  async function saveListing(data:{title:string;description:string;originalPrice:number;foodSavePrice:number;quantity:number;weightKg:number;pickupStart:string;pickupEnd:string;expiresAt:string}) {
+    try {if(selected)await api.updateListing(selected.id,data);else await api.createListing(data);
+      setSelected(null);setDialog(null);await refresh();setToast({type:"success",text:"Предложение сохранено"});
+    }catch(error){setToast({type:"error",text:errText(error,"Не удалось сохранить предложение")});}
+  }
+  async function cancelListing(listing:Listing){
+    if(!window.confirm(`Отменить предложение «${listing.title}»?`))return;
+    try{await api.cancelListing(listing.id);await refresh();setToast({type:"success",text:"Предложение отменено"});}
+    catch(error){setToast({type:"error",text:errText(error,"Ошибка отмены")});}
+  }
+  async function saveBusiness(data:{businessName:string;description:string;address:string}){
+    try {if(business)await api.updateBusinessProfile(data);else await api.createBusinessProfile(data);
+      setDialog(null);await refresh();setToast({type:"success",text:"Профиль бизнеса сохранён"});
+    }catch(error){setToast({type:"error",text:errText(error,"Не удалось сохранить профиль")});}
+  }
+  async function scanQr(token:string){
+    try {await api.scanOrderQr(token);setDialog(null);await refresh();setToast({type:"success",text:"Заказ выдан и подтверждён"});}
+    catch(error){setToast({type:"error",text:errText(error,"QR не принят")});}
+  }
+  async function updateProfile(next:Profile){
+    const cityChanged=profile?.city!==next.city;
+    setProfile(next);setDialog(null);
+    if(cityChanged){
+      setNearByOff();
+      setListings([]); // Не показываем старый город, пока обновляется каталог.
+      try {setListings(await api.getListings(next.city));}
+      catch(error){setToast({type:"error",text:errText(error,"Не удалось загрузить предложения нового города")});return;}
+    }
+    setToast({type:"success",text:"Профиль обновлён"});
+  }
+
+  if (initializing) return <div className="app-loading"><Leaf size={38}/><b>FoodSave</b><p>Загружаем твой аккаунт…</p></div>;
+  if (!authenticated || !profile) return <>
+    <Landing onAuth={mode=>{setAuthMode(mode);setAuthOpen(true);}}/>
+    {authOpen&&<AuthModal mode={authMode} loading={busy} onClose={()=>setAuthOpen(false)} onMode={setAuthMode} onLogin={login} onRegister={register}/>}
+    {toast&&<Toast t={toast}/>}
+  </>;
+  const isBusiness=profile.role==="BUSINESS";
+  const activeRoute=isBusiness?"/business":route==="/orders"?"/orders":"/discover";
+  function onNav(event:React.MouseEvent<HTMLAnchorElement>,target:Route){
+    if(event.button===0&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey){event.preventDefault();navigate(target);}
+  }
   return <div className="app-shell">
-    <header className="topbar"><div className="container nav"><div className="brand" onClick={()=>scrollTo({top:0,behavior:"smooth"})}><span className="brand-mark"><Leaf size={18}/></span>Food<span>Save</span></div><nav><a href="#discover">Предложения</a><a href="#orders">Заказы</a><a href="#impact">Вклад</a>{isBusiness&&<a href="#business">Business</a>}</nav><div className="actions"><button className="icon-btn" onClick={refresh} title="Обновить"><RefreshCw size={17} className={loading?"spin":""}/></button>{isBusiness&&<button className="icon-btn" title="Сканировать QR" onClick={()=>setModal("scanner")}><ScanLine size={18}/></button>}<button className="profile-chip" onClick={()=>setModal("profile")}><span className="avatar">{profile.username[0].toUpperCase()}</span><b>{profile.username}</b></button><button className="icon-btn" onClick={logout} title="Выйти"><LogOut size={17}/></button></div></div></header>
+    <header className="topbar"><div className="container nav">
+      <a href={isBusiness?"/business":"/discover"} className="brand" onClick={event=>onNav(event,isBusiness?"/business":"/discover")}><span className="brand-mark"><Leaf size={18}/></span>Food<span>Save</span></a>
+      <nav aria-label="Основная навигация">
+        {isBusiness?<a className={activeRoute==="/business"?"nav-active":""} href="/business" onClick={event=>onNav(event,"/business")}>Кабинет бизнеса</a>:<>
+          <a className={activeRoute==="/discover"?"nav-active":""} href="/discover" onClick={event=>onNav(event,"/discover")}>Предложения</a>
+          <a className={activeRoute==="/orders"?"nav-active":""} href="/orders" onClick={event=>onNav(event,"/orders")}>Мои заказы <span className="nav-count">{orders.filter(o=>o.status==="RESERVED").length}</span></a>
+        </>}
+      </nav>
+      <div className="actions"><button className="icon-btn" onClick={()=>void refresh()} title="Обновить данные" disabled={busy}><RefreshCw size={17} className={busy?"spin":""}/></button>
+        {isBusiness&&<button className="icon-btn" title="Сканировать QR" onClick={()=>setDialog("scanner")}><ScanLine size={18}/></button>}
+        <button className="profile-chip" onClick={()=>setDialog("profile")} title="Мой профиль"><span className="avatar">{profile.username.charAt(0).toUpperCase()}</span><b>{profile.username}</b></button>
+        <button className="icon-btn" onClick={logout} title="Выйти"><LogOut size={17}/></button>
+      </div>
+    </div></header>
     <main>
-      <section className="hero container"><div><span className="eyebrow">✦ Спасаем еду вместе</span><h1>Хорошая еда.<br/><em>Не пропадёт.</em></h1><p>Находи еду со скидкой до 90%, бронируй и забирай рядом с собой.</p><div className="hero-actions"><a className="primary-btn" href="#discover">Найти еду <ArrowRight size={17}/></a><button className="ghost-btn" onClick={locate}><LocateFixed size={17}/> Рядом со мной</button></div></div><div className="hero-art"><div className="hero-orb"/><div className="hero-food">🥐</div><div className="floating f1"><Leaf size={16}/><b>−90%</b><small>скидка</small></div><div className="floating f2"><MapPin size={16}/><b>{nearby?"до 10 км":cityName(profile.city)}</b><small>{nearby?"рядом":"твой город"}</small></div></div></section>
-      <section className="impact-strip"><div className="container stat-grid"><Stat v={`${stats.saved}`} l="завершено"/><Stat v={money(stats.spent)} l="заказов на сумму"/><Stat v={`${listings.length}`} l="предложений"/><Stat v={`${profile.foodPoints??0}`} l="FoodPoints"/></div></section>
-      <section id="discover" className="section container"><div className="heading"><div><span className="kicker">{nearby?"Рядом с тобой":cityName(profile.city)}</span><h2>Спасти сегодня</h2></div><div className="heading-actions"><button className="ghost-btn small" onClick={nearby?async()=>{setNearby(false);setListings(await api.getListings())}:locate}><MapPin size={15}/>{nearby?"Показать все":"Найти рядом"}</button></div></div>{nearby&&coords&&<MapView user={coords} listings={listings}/>}<div className="listing-grid">{listings.length?listings.map(l=><ListingCard key={l.id} listing={l} onOpen={()=>{setSelected(l);setModal("order")}}/>):<Empty/>}</div></section>
-      <section id="orders" className="section soft"><div className="container"><div className="heading"><div><span className="kicker">История</span><h2>Мои заказы</h2></div><span className="count">{orders.length}</span></div>{orders.length?<div className="orders">{orders.map(o=><OrderRow key={o.id} order={o} onPay={()=>pay(o)} onQr={async()=>{try{const q=await api.getOrderQr(o.id);setQr({fsId:o.fsId,qrData:q.qrData});setSelectedOrder(o);setModal("qr")}catch(e){setToast({type:"error",text:errText(e,"QR пока недоступен")})}}} onReview={()=>{setSelectedOrder(o);setModal("review")}} onCancel={async()=>{try{await api.cancelOrder(o.id);await refresh()}catch(e){setToast({type:"error",text:errText(e,"Не удалось отменить заказ")})}}}/>)}</div>:<Empty/>}</div></section>
-      <section id="impact" className="section container"><div className="impact-card"><div><span className="kicker">Твой вклад</span><h2>Каждая покупка имеет эффект.</h2><p>Статистика рассчитывается backend только по завершённым заказам.</p></div><button className="primary-btn" onClick={loadImpact}><Leaf size={17}/> Открыть статистику</button></div></section>
-      {isBusiness&&<section id="business" className="section container business"><div className="business-head"><div><span className="kicker">FoodSave Business</span><h2>{business?.businessName||"Настрой бизнес-профиль"}</h2><p>{business?.address||"Добавь адрес, чтобы геокодер определил координаты бизнеса."}</p></div><div className="business-actions">{!business&&<button className="primary-btn" onClick={()=>setModal("business")}><Building2 size={17}/> Создать профиль</button>}<button className="ghost-btn" onClick={()=>setModal("scanner")}><ScanLine size={17}/> Сканировать QR</button>{business&&<button className="ghost-btn" onClick={()=>setModal("business")}><Pencil size={16}/> Изменить</button>}</div></div><div className="business-grid"><div><div className="business-subhead"><h3>Мои предложения</h3><button className="primary-btn" onClick={()=>setModal("listing")}><Plus size={17}/> Новое</button></div>{myListings.length?myListings.map(l=><div className="my-listing" key={l.id}><div><b>{l.title}</b><span>{money(l.foodSavePrice)} · ×{l.quantity} · {l.status}</span></div><div className="my-actions"><button className="icon-btn" onClick={()=>{setSelected(l);setModal("listing")}}><Pencil size={15}/></button><button className="danger-icon" onClick={async()=>{try{await api.cancelListing(l.id);await refresh()}catch(e){setToast({type:"error",text:errText(e,"Не удалось отменить")})}}}><Trash2 size={16}/></button></div></div>):<p className="muted">Пока нет объявлений.</p>}</div><div className="business-rating"><Star size={24}/><b>{rating==null?"—":rating.toFixed(1)}</b><span>Средний рейтинг по отзывам клиентов</span>{reviews.length>0&&<small>{reviews.length} отзыв(ов)</small>}</div></div></section>}
+      {!isBusiness&&activeRoute==="/discover"&&<DiscoverPage city={profile.city} listings={customerListings} hiddenUnknown={hiddenUnknown} nearby={nearby} coords={coords} locating={locating} onLocate={locate} onShowAll={()=>void showAllListings()} onOpen={listing=>{setSelected(listing);setDialog("order")}} onOrders={()=>navigate("/orders")}/>}
+      {!isBusiness&&activeRoute==="/orders"&&<OrdersPage profile={profile} orders={orders} paidIds={confirmedPaid} payingId={payingId} onPay={pay} onQr={showOrderQr} onReview={order=>{setSelectedOrder(order);setDialog("review")}} onCancel={cancelOrder} onDiscover={()=>navigate("/discover")} onImpact={loadImpact}/>}
+      {isBusiness&&<BusinessPage business={business} listings={myListings} rating={rating} reviewCount={reviews.length} onProfile={()=>setDialog("business")} onCreate={()=>{setSelected(null);setDialog("listing")}} onEdit={listing=>{setSelected(listing);setDialog("listing")}} onCancel={cancelListing} onScanner={()=>setDialog("scanner")}/>}
     </main>
     <footer><div className="container footer"><b>Food<span>Save</span></b><span>Спасение еды — спасение планеты.</span><span>© 2026</span></div></footer>
-    {modal==="profile"&&<ProfileModal profile={profile} onClose={()=>setModal(null)} onSaved={p=>{setProfile(p);setModal(null)}} onPassword={()=>setModal("password")} onQr={async()=>{try{setQr(await api.getQr());setModal("qr")}catch(e){setToast({type:"error",text:errText(e,"QR недоступен")})}}}/>} 
-    {modal==="password"&&<PasswordModal close={()=>setModal("profile")} toast={setToast}/>} 
-    {modal==="listing"&&isBusiness&&<ListingModal existing={selected} close={()=>{setSelected(null);setModal(null)}} submit={async d=>{try{if(selected)await api.updateListing(selected.id,d);else await api.createListing(d);setSelected(null);setModal(null);await refresh();setToast({type:"success",text:selected?"Предложение обновлено":"Предложение опубликовано"})}catch(e){setToast({type:"error",text:errText(e,"Не удалось сохранить предложение")})}}}/>} 
-    {modal==="order"&&selected&&<OrderModal listing={selected} close={()=>setModal(null)} submit={createOrder}/>} 
-    {modal==="qr"&&qr&&<QrModal qr={qr.qrData} close={()=>setModal(null)}/>} 
-    {modal==="review"&&selectedOrder&&<ReviewModal order={selectedOrder} close={()=>setModal(null)} submit={review}/>} 
-    {modal==="impact"&&impact&&<ImpactModal data={impact} close={()=>setModal(null)}/>} 
-    {modal==="business"&&isBusiness&&<BusinessModal business={business} close={()=>setModal(null)} save={async d=>{try{const b=business?await api.updateBusinessProfile(d):await api.createBusinessProfile(d);setBusiness(b);setModal(null);await refresh();setToast({type:"success",text:"Бизнес-профиль сохранён"})}catch(e){setToast({type:"error",text:errText(e,"Не удалось сохранить профиль")})}}}/>} 
-    {modal==="scanner"&&isBusiness&&<ScannerModal close={()=>setModal(null)} scan={async token=>{try{await api.scanOrderQr(token);setModal(null);await refresh();setToast({type:"success",text:"Заказ подтверждён"})}catch(e){setToast({type:"error",text:errText(e,"QR не принят")})}}}/>} 
-    {toast&&<Toast t={toast}/>} 
+    {dialog==="profile"&&<ProfileModal profile={profile} onClose={()=>setDialog(null)} onSaved={updateProfile} onPassword={()=>setDialog("password")} onQr={async()=>{try{setQr(await api.getQr());setQrKind("profile");setDialog("qr");}catch(error){setToast({type:"error",text:errText(error,"QR недоступен")});}}}/>}
+    {dialog==="password"&&<PasswordModal close={()=>setDialog("profile")} toast={setToast}/>}
+    {dialog==="listing"&&isBusiness&&<ListingModal existing={selected} close={()=>{setSelected(null);setDialog(null);}} submit={saveListing}/>}
+    {dialog==="order"&&!isBusiness&&selected&&<OrderModal listing={selected} close={()=>setDialog(null)} submit={createOrder}/>}
+    {dialog==="qr"&&qr&&<QrModal qr={qr.qrData} kind={qrKind} close={()=>setDialog(null)}/>}
+    {dialog==="review"&&selectedOrder&&<ReviewModal order={selectedOrder} close={()=>setDialog(null)} submit={review}/>}
+    {dialog==="impact"&&<ImpactModal
+      data={impact}
+      loading={impactLoading}
+      error={impactError}
+      completedOrders={profile.completedOrders ?? orders.filter(order=>order.status==="COMPLETED").length}
+      foodPoints={profile.foodPoints ?? 0}
+      onRetry={()=>void loadImpact()}
+      close={()=>setDialog(null)}
+    />}
+    {dialog==="business"&&isBusiness&&<BusinessModal business={business} close={()=>setDialog(null)} save={saveBusiness}/>}
+    {dialog==="scanner"&&isBusiness&&<ScannerModal close={()=>setDialog(null)} scan={scanQr}/>}
+    {toast&&<Toast t={toast}/>}
   </div>;
 }
-
-function Stat({v,l}:{v:string;l:string}){return <div className="stat"><b>{v}</b><span>{l}</span></div>}
-function Empty(){return <div className="empty"><ShoppingBag size={28}/><h3>Пока пусто</h3><p>Активных предложений пока нет.</p></div>}
-function foodEmoji(t:string){const x=t.toLowerCase();if(x.includes("пиц"))return"🍕";if(x.includes("суш"))return"🍣";if(x.includes("бургер"))return"🍔";if(x.includes("коф"))return"☕";if(x.includes("салат"))return"🥗";if(x.includes("хлеб")||x.includes("выпеч"))return"🥐";return"🥡"}
-function ListingCard({listing:l,onOpen}:{listing:Listing;onOpen:()=>void}){return <article className="listing-card"><div className="listing-image"><span className="food-emoji">{foodEmoji(l.title)}</span><b className="discount">−{disc(l.originalPrice,l.foodSavePrice)}%</b><span className="available">● {l.status==="ACTIVE"?"Доступно":l.status}</span></div><div className="listing-body"><div className="title-line"><h3>{l.title}</h3><span>×{l.quantity}</span></div><p>{l.description||"Предложение от FoodSave Business"}</p><div className="meta"><span><Building2 size={13}/> {l.businessName||"Бизнес"}</span>{l.businessRating!=null&&<span><Star size={13}/> {l.businessRating.toFixed(1)}</span>}{l.distanceKm!=null&&<span><MapPin size={13}/> {l.distanceKm.toFixed(1)} км</span>}</div><div className="pickup"><Clock3 size={14}/> {dt(l.pickupStart)} — {time(l.pickupEnd)}</div><div className="price"><div><del>{money(l.originalPrice)}</del><b>{money(l.foodSavePrice)}</b></div><button className="circle" disabled={l.status!=="ACTIVE"} onClick={onOpen}><ArrowRight size={18}/></button></div></div></article>}
-function OrderRow({order:o,onPay,onQr,onReview,onCancel}:{order:Order;onPay:()=>void;onQr:()=>void;onReview:()=>void;onCancel:()=>void}){const label:any={RESERVED:"Зарезервирован",COMPLETED:"Завершён",CANCELLED:"Отменён",EXPIRED:"Истёк",NO_SHOW:"Не забран"};return <div className="order-row"><div className="order-icon"><PackageCheck size={20}/></div><div className="order-main"><b>{o.listingTitle}</b><span>{o.quantity} шт. · {dt(o.createdAt)}</span><small><Clock3 size={12}/> {time(o.pickupStart)} — {time(o.pickupEnd)}</small></div><div className="order-right"><b>{money(o.totalPrice)}</b><span className={`status status-${o.status.toLowerCase()}`}>{label[o.status]}</span><div className="row-actions">{o.status==="RESERVED"&&<><button onClick={onPay}><CreditCard size={14}/> Оплатить</button><button onClick={onQr}><QrCode size={14}/> QR</button><button onClick={onCancel}>Отмена</button></>}{o.status==="COMPLETED"&&<button onClick={onReview}><Star size={14}/> Отзыв</button>}</div></div></div>}
-function Modal({children,close,wide=false}:{children:ReactNode;close:()=>void;wide?:boolean}){return <div className="backdrop"><div className={`modal ${wide?"wide":""}`}><button className="close" onClick={close}><X size={18}/></button>{children}</div></div>}
-function Field({label,value,onChange,type="text",placeholder,required=true,min,max}:{label:string;value:string;onChange:(v:string)=>void;type?:string;placeholder?:string;required?:boolean;min?:string;max?:string}){return <label className="field"><span>{label}</span><input type={type} value={value} placeholder={placeholder} required={required} min={min} max={max} onChange={e=>onChange(e.target.value)}/></label>}
-function CitySelect({value,onChange}:{value:City;onChange:(v:City)=>void}){return <label className="field"><span>Город</span><select value={value} onChange={e=>onChange(e.target.value as City)}><option value="ALMATY">Алматы</option><option value="ASTANA">Астана</option></select></label>}
-
-function AuthModal({mode,loading,onClose,onMode,onLogin,onRegister}:{mode:"login"|"register";loading:boolean;onClose:()=>void;onMode:(m:"login"|"register")=>void;onLogin:(e:string,p:string)=>void;onRegister:(d:{username:string;email:string;phoneNumber:string;password:string;city:City})=>void}){const [f,setF]=useState({username:"",email:"",phoneNumber:"",password:"",city:"ALMATY" as City});return <Modal close={onClose}><div className="auth-head"><div className="modal-icon"><Leaf size={22}/></div><span className="kicker">FoodSave</span><h2>{mode==="login"?"С возвращением":"Создать аккаунт"}</h2></div><form className="form-stack" onSubmit={e=>{e.preventDefault();if(mode==="login")onLogin(f.email,f.password);else onRegister(f)}}>{mode==="register"&&<Field label="Username" value={f.username} onChange={v=>setF({...f,username:v})}/>}<Field label="Email" type="email" value={f.email} onChange={v=>setF({...f,email:v})}/>{mode==="register"&&<Field label="Телефон" value={f.phoneNumber} onChange={v=>setF({...f,phoneNumber:v})} placeholder="+77001234567" pattern=""/>}<Field label="Пароль" type="password" value={f.password} onChange={v=>setF({...f,password:v})} min="8" max="64"/>{mode==="register"&&<CitySelect value={f.city} onChange={v=>setF({...f,city:v})}/>}<button className="primary-btn full" disabled={loading}>{loading?"Подождите…":mode==="login"?"Войти":"Зарегистрироваться"}<ArrowRight size={17}/></button></form><div className="switch">{mode==="login"?"Нет аккаунта?":"Уже зарегистрирован?"}<button onClick={()=>onMode(mode==="login"?"register":"login")}>{mode==="login"?"Создать":"Войти"}</button></div></Modal>}
-
-function ProfileModal({profile:p,onClose,onSaved,onPassword,onQr}:{profile:Profile;onClose:()=>void;onSaved:(p:Profile)=>void;onPassword:()=>void;onQr:()=>void}){const [email,setEmail]=useState(p.email),[phone,setPhone]=useState(p.phoneNumber),[city,setCity]=useState<City>(p.city);const [error,setError]=useState("");return <Modal close={onClose}><div className="profile-top"><div className="avatar-big">{p.username[0].toUpperCase()}</div><div><span className="kicker">Мой профиль</span><h2>{p.username}</h2><span className="role">{p.role}</span></div></div><div className="profile-stats"><b>{p.foodPoints??0}<small>FoodPoints</small></b><b>{p.reliability??100}%<small>Надёжность</small></b><b>{p.completedOrders??0}<small>Завершено</small></b></div><div className="fsid"><div><Ticket size={18}/><span><small>FoodSave ID</small><b>{p.fsId}</b></span></div><button onClick={()=>navigator.clipboard?.writeText(p.fsId)}><Copy size={16}/></button></div><div className="profile-buttons"><button className="ghost-btn full" onClick={onQr}><QrCode size={16}/> Мой QR</button><button className="ghost-btn full" onClick={onPassword}><ShieldCheck size={16}/> Пароль</button></div><form className="form-stack" onSubmit={async e=>{e.preventDefault();setError("");try{onSaved(await api.updateProfile({email,phoneNumber:phone,city}))}catch(x){setError(errText(x,"Не удалось сохранить"))}}}><Field label="Email" type="email" value={email} onChange={setEmail}/><Field label="Телефон" value={phone} onChange={setPhone}/><CitySelect value={city} onChange={setCity}/><div className="locked"><UserRound size={16}/> Username: <b>{p.username}</b><span>не изменяется</span></div>{error&&<div className="form-error">{error}</div>}<button className="primary-btn full">Сохранить изменения</button></form></Modal>}
-function PasswordModal({close,toast}:{close:()=>void;toast:(t:Toast)=>void}){const [a,setA]=useState(""),[b,setB]=useState("");return <Modal close={close}><span className="kicker">Безопасность</span><h2>Сменить пароль</h2><p className="muted">Минимум 8 символов — такая же проверка, как на backend.</p><form className="form-stack" onSubmit={async e=>{e.preventDefault();if(b.length<8||b.length>64){toast({type:"error",text:"Новый пароль должен содержать от 8 до 64 символов"});return}try{await api.changePassword({oldPassword:a,newPassword:b});toast({type:"success",text:"Пароль изменён"});close()}catch(x){toast({type:"error",text:errText(x,"Ошибка")})}}}><Field label="Старый пароль" type="password" value={a} onChange={setA}/><Field label="Новый пароль" type="password" value={b} onChange={setB} min="8" max="64"/><button className="primary-btn full">Изменить</button></form></Modal>}
-
-function ListingModal({existing,close,submit}:{existing:Listing|null;close:()=>void;submit:(d:{title:string;description:string;originalPrice:number;foodSavePrice:number;quantity:number;weightKg:number;pickupStart:string;pickupEnd:string;expiresAt:string})=>void}){const start=existing?new Date(existing.pickupStart):new Date(),end=existing?new Date(existing.pickupEnd):new Date(Date.now()+3*3600000),[f,setF]=useState({title:existing?.title||"",description:existing?.description||"",originalPrice:String(existing?.originalPrice||3500),foodSavePrice:String(existing?.foodSavePrice||1500),quantity:String(existing?.quantity||5),weightKg:String(existing?.weightKg||0.45),pickupStart:toLocal(start),pickupEnd:toLocal(end),expiresAt:toLocal(existing?new Date(existing.expiresAt):end)});const set=(k:string,v:string)=>setF({...f,[k]:v});const submitForm=(e:any)=>{e.preventDefault();const now=Date.now(),s=new Date(f.pickupStart).getTime(),en=new Date(f.pickupEnd).getTime(),ex=new Date(f.expiresAt).getTime();if(s<now||en<now||ex<now){alert("Дата и время предложения не могут быть в прошлом");return}if(s>en){alert("Забрать с не может быть позже Забрать до");return}if(ex<en){alert("Истекает не может быть раньше окончания получения");return}if(+f.foodSavePrice<=0||+f.originalPrice<=+f.foodSavePrice||+f.quantity<=0||+f.weightKg<=0){alert("Проверь цены, количество и вес");return}submit({...f,originalPrice:+f.originalPrice,foodSavePrice:+f.foodSavePrice,quantity:+f.quantity,weightKg:+f.weightKg})};return <Modal close={close} wide><span className="kicker">Business</span><h2>{existing?"Редактировать предложение":"Новое предложение"}</h2><form className="form-grid" onSubmit={submitForm}><div className="span"><Field label="Название" value={f.title} onChange={v=>set("title",v)}/></div><div className="span"><Field label="Описание" value={f.description} onChange={v=>set("description",v)} required={false}/></div><Field label="Обычная цена" type="number" value={f.originalPrice} onChange={v=>set("originalPrice",v)}/><Field label="Цена FoodSave" type="number" value={f.foodSavePrice} onChange={v=>set("foodSavePrice",v)}/><Field label="Количество" type="number" value={f.quantity} onChange={v=>set("quantity",v)}/><Field label="Вес 1 шт. (кг)" type="number" value={f.weightKg} onChange={v=>set("weightKg",v)}/><Field label="Забрать с" type="datetime-local" value={f.pickupStart} onChange={v=>set("pickupStart",v)}/><Field label="Забрать до" type="datetime-local" value={f.pickupEnd} onChange={v=>set("pickupEnd",v)}/><div className="span"><Field label="Истекает" type="datetime-local" value={f.expiresAt} onChange={v=>set("expiresAt",v)}/></div><div className="form-end span"><button type="button" className="ghost-btn" onClick={close}>Отмена</button><button className="primary-btn">{existing?"Сохранить":"Опубликовать"} <ArrowRight size={16}/></button></div></form></Modal>}
-function OrderModal({listing:l,close,submit}:{listing:Listing;close:()=>void;submit:(l:Listing,q:number)=>void}){const [q,setQ]=useState(1);return <Modal close={close}><div className="order-preview"><span>{foodEmoji(l.title)}</span><b>−{disc(l.originalPrice,l.foodSavePrice)}%</b></div><span className="kicker">{l.businessName||"FoodSave Business"}</span><h2>{l.title}</h2><p className="muted">{l.description}</p><div className="details"><span><Clock3 size={14}/> {dt(l.pickupStart)} — {time(l.pickupEnd)}</span><span><MapPin size={14}/> {l.distanceKm!=null?`${l.distanceKm.toFixed(1)} км`:"рядом"}</span><span><Star size={14}/> {l.businessRating?.toFixed(1)||"—"}</span></div><div className="qty"><span>Количество</span><div><button onClick={()=>setQ(Math.max(1,q-1))}>−</button><b>{q}</b><button onClick={()=>setQ(Math.min(l.quantity,q+1))}>+</button></div></div><div className="checkout"><div><small>Итого</small><b>{money(l.foodSavePrice*q)}</b></div><button className="primary-btn" onClick={()=>submit(l,q)}>Забронировать <ArrowRight size={16}/></button></div><div className="note">Сначала бронирование, затем оплата в разделе «Мои заказы».</div></Modal>}
-function QrModal({qr,close}:{qr:string;close:()=>void}){return <Modal close={close}><div className="qr-modal"><span className="kicker">FoodSave QR</span><h2>Покажи этот QR бизнесу</h2><p>После сканирования бизнесом заказ станет COMPLETED.</p><div className="qr-box"><img src={qrImg(qr)} alt="Order QR"/></div><code>{qr}</code><button className="ghost-btn full" onClick={()=>navigator.clipboard?.writeText(qr)}><Copy size={15}/> Скопировать</button></div></Modal>}
-function ReviewModal({order:o,close,submit}:{order:Order;close:()=>void;submit:(o:Order,r:number,c:string)=>void}){const [r,setR]=useState(5),[c,setC]=useState("");return <Modal close={close}><span className="kicker">Отзыв</span><h2>{o.listingTitle}</h2><div className="stars">{[1,2,3,4,5].map(n=><button key={n} className={n<=r?"on":""} onClick={()=>setR(n)}><Star size={30} fill="currentColor"/></button>)}</div><label className="field"><span>Комментарий</span><textarea value={c} onChange={e=>setC(e.target.value)} placeholder="Как прошёл заказ?"/></label><button className="primary-btn full" onClick={()=>submit(o,r,c)}>Оставить отзыв</button></Modal>}
-function ImpactModal({data:d,close}:{data:Impact;close:()=>void}){return <Modal close={close}><span className="kicker">Impact</span><h2>Твой вклад</h2><div className="impact-big"><div><b>{d.foodSavedKg}</b><span>кг еды спасено</span></div><div><b>{money(d.moneySaved)}</b><span>сэкономлено</span></div><div><b>{d.co2SavedKg}</b><span>кг CO₂e оценочно</span></div></div></Modal>}
-function BusinessModal({business:b,close,save}:{business:BusinessProfile|null;close:()=>void;save:(d:{businessName:string;description:string;address:string})=>void}){const [n,setN]=useState(b?.businessName||""),[d,setD]=useState(b?.description||""),[a,setA]=useState(b?.address||"");return <Modal close={close}><span className="kicker">Business Profile</span><h2>{b?"Изменить профиль":"Создать профиль"}</h2><p className="muted">Адрес отправляется на backend, там Nominatim определяет latitude/longitude.</p><form className="form-stack" onSubmit={e=>{e.preventDefault();save({businessName:n,description:d,address:a})}}><Field label="Название бизнеса" value={n} onChange={setN}/><Field label="Описание" value={d} onChange={setD} required={false}/><Field label="Адрес" value={a} onChange={setA} placeholder="ул. Абая 10"/><button className="primary-btn full">Сохранить профиль</button></form></Modal>}
-function ScannerModal({close,scan}:{close:()=>void;scan:(token:string)=>void}){const [value,setValue]=useState(""),[running,setRunning]=useState(false);async function camera(){const Detector=(window as any).BarcodeDetector;if(!Detector){alert("BarcodeDetector не поддерживается. Вставь qrToken вручную.");return}try{const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});const video=document.getElementById("qr-video") as HTMLVideoElement;video.srcObject=stream;await video.play();setRunning(true);const detector=new Detector({formats:["qr_code"]});const loop=async()=>{const codes=await detector.detect(video);if(codes[0]?.rawValue){stream.getTracks().forEach((t:any)=>t.stop());const raw=String(codes[0].rawValue);setValue(raw);setRunning(false);scan(raw.includes("foodsave://order/")?raw.split("foodsave://order/")[1]:raw);return}requestAnimationFrame(loop)};loop()}catch{setRunning(false)}}return <Modal close={close}><span className="kicker">Business</span><h2>Сканировать заказ</h2><p className="muted">Камера или ручной ввод qrToken.</p><video id="qr-video" className={running?"scanner-video":"scanner-video hidden"}/><button className="primary-btn full" onClick={camera}><Camera size={17}/> Открыть камеру</button><div className="or">или</div><Field label="QR data / token" value={value} onChange={setValue}/><button className="ghost-btn full" disabled={!value} onClick={()=>scan(value.includes("foodsave://order/")?value.split("foodsave://order/")[1]:value)}><CheckCircle2 size={16}/> Подтвердить заказ</button></Modal>}
-function Toast({t}:{t:Exclude<Toast,null>}){return <div className={`toast ${t.type}`}><span/> {t.text}</div>}
-function Landing({onAuth}:{onAuth:(m:"login"|"register")=>void}){return <div className="landing"><header className="topbar"><div className="container nav"><div className="brand"><span className="brand-mark"><Leaf size={18}/></span>Food<span>Save</span></div><div className="actions"><button className="ghost-btn" onClick={()=>onAuth("login")}>Войти</button><button className="primary-btn" onClick={()=>onAuth("register")}>Создать аккаунт</button></div></div></header><section className="landing-hero container"><div><span className="eyebrow"><Leaf size={15}/> Алматы · Астана · Казахстан</span><h1>Еда, которую<br/><em>успеют спасти.</em></h1><p>FoodSave соединяет людей и бизнес, чтобы хорошая еда не превращалась в отходы.</p><div className="hero-actions"><button className="primary-btn" onClick={()=>onAuth("register")}>Начать спасать <ArrowRight size={17}/></button><button className="ghost-btn" onClick={()=>onAuth("login")}>У меня уже есть аккаунт</button></div></div><div className="landing-art"><div className="landing-orb"/><div className="landing-food">🥑</div><div className="landing-card c1">−75%<small>скидка</small></div><div className="landing-card c2">рядом<small>по геолокации</small></div><div className="landing-card c3">QR<small>получение заказа</small></div></div></section><section className="landing-bottom"><div className="container values"><Value icon={<Ticket/>} title="До 90% дешевле" text="Спасай еду со скидкой."/><Value icon={<MapPin/>} title="Реальная карта" text="Предложения показываются по координатам бизнеса."/><Value icon={<Leaf/>} title="Impact" text="Завершённые заказы формируют статистику."/></div></section></div>}
-function Value({icon,title,text}:{icon:ReactNode;title:string;text:string}){return <div className="value"><span>{icon}</span><div><b>{title}</b><p>{text}</p></div></div>}

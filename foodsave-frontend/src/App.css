@@ -5,3 +5,120 @@
 
 /* FoodSave frontend v2 additions */
 .real-map{height:390px;border:1px solid var(--line);border-radius:22px;overflow:hidden;margin-bottom:22px;position:relative;z-index:0}.real-map .map-loading{position:absolute;inset:0;display:grid;place-items:center;background:#edf2e8;color:#657066;z-index:0}.real-map .leaflet-container{height:100%;width:100%;z-index:1}.field select{width:100%;height:45px;border:1px solid #dfe5dc;background:#fbfcfa;border-radius:11px;padding:0 12px;outline:0;color:var(--ink)}.field select:focus{border-color:#9bb38f;box-shadow:0 0 0 3px #e9f0e5}.form-error{padding:10px 12px;border-radius:10px;background:#fff0ed;color:#a44f43;font-size:11px}.business-subhead{display:flex;align-items:center;justify-content:space-between;gap:12px}.business-subhead h3{margin-bottom:0}.my-actions{display:flex;gap:7px}.my-actions .icon-btn{width:34px;height:34px}.status-canceled,.status-cancelled{background:#f2f2f2;color:#777}.status-no_show{background:#fff0ed;color:#a44f43}.status-completed{background:#e7f4e4;color:#397044}.status-reserved{background:#fff4d9;color:#8b6b22}.status-expired{background:#f0f0f0;color:#777}
+
+/* =========================================================
+   Three-page layout • original FoodSave visual language
+   ========================================================= */
+.app-shell{min-height:100vh;display:flex;flex-direction:column}
+.app-shell>main{flex:1}
+.nav nav a{display:inline-flex;align-items:center;gap:8px;padding:12px 14px;border-radius:10px;transition:background .2s,color .2s}
+.nav nav a:hover{background:#e9f2e3;color:var(--green)}
+.nav nav a.nav-active{color:var(--dark);background:#dfead7}
+.nav-count{background:#d6e6cc;color:var(--dark);min-width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font:800 10px Manrope}
+.app-loading{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--dark)}
+.app-loading b{font:800 30px Manrope}.app-loading p{color:var(--muted);font-size:13px}
+.discover-hero{min-height:450px;padding-top:45px;padding-bottom:45px}
+.discover-hero .hero-art{max-width:480px}
+.discover-stats .stat b{font-size:20px}
+.page-offers{padding-bottom:72px}
+.city-notice,.data-notice{display:flex;align-items:center;gap:11px;border:1px solid #d6e6d7;border-radius:13px;background:#edf6eb;color:#375b3b;padding:12px 16px;font-size:12px;margin:0 0 22px;line-height:1.5}
+.data-notice{border-color:#e8d7a7;background:#fffae9;color:#806633}
+.city-notice svg,.data-notice svg{flex-shrink:0}
+.help-strip{margin:30px 0 0;background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px 25px;display:flex;align-items:center;gap:15px;color:var(--green)}
+.help-strip div{display:flex;flex-direction:column;gap:5px}.help-strip b{color:var(--ink);font-family:Manrope}.help-strip span{color:var(--muted);font-size:12px}
+.empty-page{margin:16px 0 35px}.empty-page>p{color:var(--muted);font-size:13px;text-align:center}
+.page-head{display:flex;align-items:center;justify-content:space-between;gap:28px;padding:26px 0 35px}
+.page-head h1{font:800 clamp(33px,4vw,48px)/1.1 Manrope;letter-spacing:-2px;margin:12px 0 9px}
+.page-head p{color:var(--muted);max-width:600px;font-size:14px;line-height:1.6;margin:0}
+.orders-page,.business-page{padding-top:35px;padding-bottom:76px}
+.orders-summary,.business-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:40px}
+.orders-summary>div,.business-metrics>div{min-height:141px;border-radius:19px;background:#fff;border:1px solid var(--line);padding:21px;display:flex;flex-direction:column;gap:7px}
+.orders-summary svg,.business-metrics svg{color:var(--green)}
+.orders-summary b,.business-metrics b{font:800 28px Manrope;letter-spacing:-1px;color:var(--ink)}
+.orders-summary span,.business-metrics span{font-size:12px;color:var(--muted)}
+.orders-page>.heading{margin-top:10px;margin-bottom:19px}
+.orders-list{display:grid;gap:13px;margin:0 0 30px}
+.order-card{display:grid;grid-template-columns:60px minmax(0,1fr) auto;gap:17px;background:#fff;border:1px solid var(--line);border-radius:20px;padding:22px;box-shadow:0 8px 25px #1f302308}
+.order-card-symbol{width:53px;height:53px;border-radius:16px;background:#ebf3e5;color:var(--green);display:grid;place-items:center}
+.order-card-center{min-width:0}
+.order-card-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.order-card h3{margin:0;font:800 17px Manrope;letter-spacing:-.4px}
+.order-card p{font-size:12px;color:var(--muted);margin:8px 0}
+.order-card-pickup{display:flex;align-items:center;gap:6px;color:#657367;font-size:12px}
+.order-card-buttons{display:flex;gap:9px;flex-wrap:wrap;margin-top:15px}
+.small-action{min-height:36px;padding:0 12px;font-size:12px;border-radius:10px}
+.order-card-total{text-align:right;display:flex;flex-direction:column;gap:5px;min-width:120px}
+.order-card-total span{color:var(--muted);font-size:11px}
+.order-card-total b{font:800 17px Manrope}
+.payment-label{display:inline-flex;align-items:center;gap:6px;margin-top:10px;border-radius:8px;padding:6px 9px;font-size:11px;font-weight:700}
+.payment-label.paid{background:#e8f4e7;color:#2a713c}.payment-label.unpaid{background:#fff5df;color:#936d23}
+.orders-impact{margin-top:35px}
+.business-page-head{padding-bottom:35px}
+.page-head-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.business-metrics{grid-template-columns:repeat(3,1fr);margin-bottom:42px}
+.business-warning{background:#fff7e2;border:1px solid #e7d6a5;color:#775b24;border-radius:18px;padding:22px;display:flex;gap:13px;align-items:center;margin:0 0 24px}
+.business-warning>div{flex:1}.business-warning p{margin:5px 0 0;font-size:12px;line-height:1.5}
+.business-section-head{display:flex;align-items:end;justify-content:space-between;gap:15px;margin-bottom:20px}
+.business-section-head h2{font:800 31px Manrope;letter-spacing:-1.2px;margin:7px 0}
+.business-section-head p{margin:0;color:var(--muted);font-size:12px;line-height:1.5}
+.business-listings{display:grid;gap:12px}
+.business-item{background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px;display:grid;grid-template-columns:72px minmax(0,1fr) 138px 125px;align-items:center;gap:17px}
+.business-item-avatar{height:69px;width:69px;display:grid;place-items:center;font-size:36px;border-radius:15px;background:#e8efe2}
+.business-item-info{display:grid;gap:7px;min-width:0}.business-item h3{font:800 16px Manrope;letter-spacing:-.3px;margin:0}
+.business-item-info p{font-size:12px;color:var(--muted);margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.business-item-info span{font-size:11px;color:#718074;display:flex;align-items:center;gap:5px}
+.business-item-price{display:flex;flex-direction:column;gap:4px}.business-item-price del{color:#8e998d;font-size:11px}.business-item-price b{font:800 17px Manrope}.business-item-price small{color:var(--muted);font-size:11px}
+.business-item-actions{display:flex;flex-direction:column;align-items:flex-end;gap:12px}.business-item-actions>div{display:flex;gap:7px}
+.business-item .danger-icon{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;border:1px solid #f3dcd6;background:#fff5f3;color:#a34b46}
+.business-empty{border:1px dashed #b6cfb5;background:#fff;border-radius:21px;padding:55px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px}
+.business-empty svg{color:var(--green)}.business-empty h3{margin:6px 0 0;font:800 22px Manrope}.business-empty p{color:var(--muted);font-size:13px;margin:0 0 12px}
+.business-bottom-help{display:flex;align-items:center;gap:16px;background:#e7efdf;border-radius:20px;padding:25px;margin-top:30px;color:var(--dark)}
+.business-bottom-help>div{flex:1}.business-bottom-help p{font-size:12px;margin:5px 0 0;color:var(--muted);line-height:1.5}
+button:disabled{opacity:.6;cursor:not-allowed}
+@media(max-width:950px){
+  .nav{flex-wrap:wrap}.nav nav{display:flex;order:3;width:100%;margin:0;gap:10px}
+  .business-item{grid-template-columns:65px minmax(0,1fr) 120px}.business-item-actions{grid-column:2 / -1;flex-direction:row;justify-content:space-between;align-items:center}
+  .page-head{align-items:flex-start;flex-direction:column}.business-section-head{align-items:flex-start;flex-direction:column}
+}
+@media(max-width:650px){
+  .topbar{height:auto;min-height:72px;padding:12px 0}.nav{gap:10px;flex-wrap:wrap}.nav nav{order:3;width:100%;display:flex;margin:0;gap:8px}.nav nav a{font-size:12px;padding:9px 12px}
+  .actions{margin-left:auto}.actions .profile-chip b{display:none}.actions .profile-chip{padding-right:4px}
+  .discover-hero{min-height:auto;padding-top:40px;padding-bottom:25px}
+  .discover-hero .hero-art{height:250px}.discover-hero .hero-orb{width:235px;height:235px}.discover-hero .hero-food{width:170px;height:170px;font-size:80px}
+  .orders-summary{grid-template-columns:repeat(2,1fr)}.business-metrics{grid-template-columns:repeat(2,1fr)}
+  .order-card{grid-template-columns:44px minmax(0,1fr);padding:15px;gap:12px}.order-card-symbol{width:44px;height:44px}.order-card-total{grid-column:2;text-align:left;order:1}
+  .order-card h3{font-size:15px}.business-item{grid-template-columns:56px minmax(0,1fr);gap:10px}.business-item-avatar{width:56px;height:56px;font-size:29px}.business-item-price,.business-item-actions{grid-column:2}.business-item-actions{align-items:center}
+  .page-head-actions,.page-head-actions button{width:100%}.page-head-actions{flex-direction:column}
+  .business-warning,.business-bottom-help{align-items:flex-start;flex-direction:column}.business-warning button,.business-bottom-help button{width:100%}
+  .orders-page,.business-page{padding-top:15px}.orders-impact{padding:24px}
+}
+
+/* FoodSave recommendations — same typography/palette as the original frontend */
+.recommendation-toolbar{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px 18px;margin:18px 0 23px;background:#eff5e9;border:1px solid #dce9d3;border-radius:17px}
+.recommendation-intro{display:flex;align-items:center;gap:12px;min-width:0}
+.recommendation-icon{width:41px;height:41px;flex:0 0 41px;display:grid;place-items:center;background:#d7e9b6;border-radius:13px;color:#2e713f}
+.recommendation-intro>div{display:grid;gap:3px}
+.recommendation-intro b{font:800 14px Manrope}
+.recommendation-intro small{color:#667567;font-size:11px;line-height:1.35}
+.recommendation-select{display:flex;align-items:center;gap:8px;white-space:nowrap;color:#607366;font-size:11px;font-weight:700}
+.recommendation-select select{background:#fff;border:1px solid #d9e4d5;border-radius:10px;padding:11px 30px 11px 11px;color:#243b2b;cursor:pointer;font-size:12px;font-weight:700;max-width:230px}
+.recommendation-select select:focus{outline:3px solid #d7e7c7;outline-offset:1px}
+.recommendation-tag{display:inline-flex;align-items:center;gap:5px;padding:6px 9px;margin-bottom:10px;border-radius:9px;background:#eef6dc;color:#376c40;font-size:10px;font-weight:800}
+@media(max-width:620px){.recommendation-toolbar{flex-direction:column;align-items:stretch}.recommendation-select{justify-content:space-between}.recommendation-select select{flex:1;min-width:0}.recommendation-intro small{font-size:10px}}
+
+/* Recommendation API source label */
+.recommendation-intro .score-source { color:#2f7743; font-weight:700; font-size:10px; }
+
+/* Impact: окно всегда открывается, даже если серверная статистика недоступна. */
+.impact-intro{line-height:1.55;margin:0 0 17px;max-width:440px}
+.impact-profile-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:15px 0 20px}
+.impact-profile-stats>div{background:#edf3e8;border:1px solid #e0eadc;border-radius:15px;padding:16px;display:grid;gap:6px}
+.impact-profile-stats b{font:800 25px Manrope,sans-serif;color:var(--ink)}
+.impact-profile-stats span{font-size:11px;color:var(--muted)}
+.impact-section-title{font:800 15px Manrope,sans-serif;margin:6px 0 13px}
+.impact-state{border-radius:14px;background:#f2f6ef;padding:19px;color:#627064;font-size:13px}
+.impact-error{background:#fff7f3;border:1px solid #f4d9c9;border-radius:14px;padding:16px;display:grid;gap:11px}
+.impact-error>b{font:800 13px Manrope,sans-serif;color:#7e443a}
+.impact-error p{font-size:12px;color:#8e5149;line-height:1.5;margin:0;overflow-wrap:anywhere}
+.impact-error button{justify-self:start}
+.impact-footnote{margin:12px 0 0;line-height:1.5}

@@ -11,7 +11,6 @@ import java.util.UUID;
 @Data
 @AllArgsConstructor
 public class FoodListingResponse {
-
     private UUID id;
 
     private String title;
@@ -29,9 +28,12 @@ public class FoodListingResponse {
     private ListingStatus status;
 
     private String businessName;
+    // Значение города пользователя-владельца бизнеса: ALMATY / ASTANA.
+    private String city;
     private Double businessRating;
 
     private Double distanceKm;
+    private Double recommendationScore; // От 0 до 100, это НЕ процент скидки
 
     private Double latitude;
     private Double longitude;

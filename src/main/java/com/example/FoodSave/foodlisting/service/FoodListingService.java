@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -172,12 +173,26 @@ public class FoodListingService {
         return toResponse(savedListing);
     }
 
+    /** Backward-compatible old endpoint: does not filter city. */
     public List<FoodListingResponse> getActiveListings() {
+        return getActiveListings(null);
+    }
+
+    /** Pass city from controller: /api/listings?city=ALMATY. */
+    @Transactional
+    public List<FoodListingResponse> getActiveListings(String city) {
+
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Almaty"));
 
         return foodListingRepository
                 .findByStatus(ListingStatus.ACTIVE)
                 .stream()
+                .filter(listing -> isAvailable(listing, now))
+                .filter(listing -> matchesCity(listing, city))
                 .map(this::toResponse)
+                .sorted(Comparator.comparingDouble(
+                        FoodListingResponse::getRecommendationScore
+                ).reversed())
                 .toList();
     }
 
@@ -376,25 +391,26 @@ public class FoodListingService {
         foodListingRepository.save(listing);
     }
 
+    /** Backward-compatible method. */
     public List<FoodListingResponse> getNearbyListings(
-            double latitude,
-            double longitude,
-            double radius
-    ) {
+            double latitude, double longitude, double radius) {
+        return getNearbyListings(latitude, longitude, radius, null);
+    }
 
-        if (radius <= 0) {
+    /** Pass city from controller: /api/listings/nearby?...&city=ALMATY. */
+    @Transactional
+    public List<FoodListingResponse> getNearbyListings(
+            double latitude, double longitude, double radius, String city) {
 
-            throw new RuntimeException(
-                    "Радиус должен быть больше 0"
-            );
+        if (!Double.isFinite(radius) || radius <= 0 || radius > 50) {
+            throw new IllegalArgumentException("Радиус должен быть от 0 до 50 км");
+        }
+        if (!Double.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+                !Double.isFinite(longitude) || longitude < -180 || longitude > 180) {
+            throw new IllegalArgumentException("Недопустимые координаты");
         }
 
-        if (radius > 50) {
-
-            throw new RuntimeException(
-                    "Максимальный радиус — 50 км"
-            );
-        }
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Almaty"));
 
         return foodListingRepository
                 .findNearbyListings(
@@ -403,6 +419,8 @@ public class FoodListingService {
                         radius
                 )
                 .stream()
+                .filter(listing -> isAvailable(listing, now))
+                .filter(listing -> matchesCity(listing, city))
                 .map(listing ->
                         toNearbyResponse(
                                 listing,
@@ -410,7 +428,34 @@ public class FoodListingService {
                                 longitude
                         )
                 )
+                .sorted(Comparator.comparingDouble(
+                        FoodListingResponse::getRecommendationScore
+                ).reversed())
                 .toList();
+    }
+
+    /** City is read from BusinessProfile -> User -> city.
+     * Null city means the legacy unfiltered method, for compatibility.
+     * NOTE: controller must authorize CUSTOMER and optionally derive city from JWT,
+     * rather than relying on a query parameter for any security-sensitive rule.
+     */
+    private boolean matchesCity(FoodListing listing, String city) {
+        if (city == null || city.isBlank()) return true;
+        return listing.getBusiness() != null
+                && listing.getBusiness().getUser() != null
+                && listing.getBusiness().getUser().getCity() != null
+                && listing.getBusiness().getUser().getCity().name().equalsIgnoreCase(city.trim());
+    }
+
+    /** Предложение доступно для бронирования в данный момент. */
+    private boolean isAvailable(FoodListing listing, LocalDateTime now) {
+        return listing.getStatus() == ListingStatus.ACTIVE
+                && listing.getQuantity() != null
+                && listing.getQuantity() > 0
+                && listing.getExpiresAt() != null
+                && listing.getExpiresAt().isAfter(now)
+                && listing.getPickupEnd() != null
+                && listing.getPickupEnd().isAfter(now);
     }
 
     private FoodListingResponse toNearbyResponse(
@@ -439,6 +484,14 @@ public class FoodListingService {
                         businessProfile.getLongitude()
                 );
 
+        double recommendationScore = RecommendationScorer.calculate(
+                listing.getOriginalPrice(),
+                listing.getFoodSavePrice(),
+                listing.getQuantity(),
+                rating,
+                distance
+        );
+
         return new FoodListingResponse(
                 listing.getId(),
                 listing.getTitle(),
@@ -451,8 +504,10 @@ public class FoodListingService {
                 listing.getExpiresAt(),
                 listing.getStatus(),
                 businessProfile.getBusinessName(),
+                businessProfile.getUser().getCity() == null ? null : businessProfile.getUser().getCity().name(),
                 Math.round(rating * 10.0) / 10.0,
                 Math.round(distance * 10.0) / 10.0,
+                recommendationScore,
                 businessProfile.getLatitude(),
                 businessProfile.getLongitude()
         );
@@ -515,6 +570,14 @@ public class FoodListingService {
             rating = 0.0;
         }
 
+        double recommendationScore = RecommendationScorer.calculate(
+                listing.getOriginalPrice(),
+                listing.getFoodSavePrice(),
+                listing.getQuantity(),
+                rating,
+                null // Нет местоположения покупателя -> не учитываем расстояние
+        );
+
         return new FoodListingResponse(
                 listing.getId(),
                 listing.getTitle(),
@@ -527,8 +590,10 @@ public class FoodListingService {
                 listing.getExpiresAt(),
                 listing.getStatus(),
                 businessProfile.getBusinessName(),
+                businessProfile.getUser().getCity() == null ? null : businessProfile.getUser().getCity().name(),
                 Math.round(rating * 10.0) / 10.0,
                 null,
+                recommendationScore,
                 businessProfile.getLatitude(),
                 businessProfile.getLongitude()
         );

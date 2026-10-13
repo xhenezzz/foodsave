@@ -18,7 +18,8 @@ export interface Listing {
   id: string; title: string; description: string;
   originalPrice: number; foodSavePrice: number; quantity: number; weightKg?: number;
   pickupStart: string; pickupEnd: string; expiresAt: string; status: ListingStatus;
-  businessName?: string; businessRating?: number; distanceKm?: number;
+  businessName?: string; businessRating?: number; distanceKm?: number; recommendationScore?: number | null;
+  city?: City; businessCity?: City; ownerId?: string;
   latitude?: number; longitude?: number;
 }
 
@@ -26,6 +27,7 @@ export interface Order {
   id: string; fsId: string; listingId: string; listingTitle: string;
   quantity: number; totalPrice: number; status: OrderStatus; createdAt: string;
   expiresAt: string; pickupStart: string; pickupEnd: string;
+  paid?: boolean; paymentStatus?: string;
 }
 
 export interface BusinessProfile {

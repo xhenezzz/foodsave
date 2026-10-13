@@ -136,17 +136,18 @@ export const api = {
      FOOD LISTINGS
      ========================================================= */
 
-  getListings: () =>
-    request<Listing[]>("/listings"),
+  getListings: (city?: City) =>
+    request<Listing[]>(city ? `/listings?city=${encodeURIComponent(city)}` : "/listings"),
 
 
   getNearbyListings: (
     lat: number,
     lon: number,
-    radius = 10
+    radius = 10,
+    city?: City
   ) =>
     request<Listing[]>(
-      `/listings/nearby?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&radius=${encodeURIComponent(radius)}`
+      `/listings/nearby?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&radius=${encodeURIComponent(radius)}${city ? `&city=${encodeURIComponent(city)}` : ""}`
     ),
 
 
@@ -155,7 +156,7 @@ export const api = {
 
 
   getMyListings: () =>
-    request<Listing[]>("/listings/ny"),
+    request<Listing[]>("/listings/my"),
 
 
   createListing: (data: {

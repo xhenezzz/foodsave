@@ -19,80 +19,54 @@ public class FoodListingController {
 
     private final FoodListingService foodListingService;
 
-    // BUSINESS — создать объявление
     @PostMapping
     @PreAuthorize("hasRole('BUSINESS')")
     public ResponseEntity<FoodListingResponse> createListing(
-            @RequestBody CreateFoodListingRequest request
-    ) {
-        return ResponseEntity.ok(
-                foodListingService.createListing(request)
-        );
+            @RequestBody CreateFoodListingRequest request) {
+        return ResponseEntity.ok(foodListingService.createListing(request));
     }
 
-    // CUSTOMER — посмотреть активные объявления
+    // /api/listings?city=ALMATY or ?city=ASTANA
     @GetMapping
-    public ResponseEntity<List<FoodListingResponse>> getActiveListings() {
-        return ResponseEntity.ok(
-                foodListingService.getActiveListings()
-        );
+    public ResponseEntity<List<FoodListingResponse>> getActiveListings(
+            @RequestParam(required = false) String city) {
+        return ResponseEntity.ok(foodListingService.getActiveListings(city));
     }
 
-    // Любой авторизованный пользователь — посмотреть объявление
-    @GetMapping("/{id}")
-    public ResponseEntity<FoodListingResponse> getListingById(
-            @PathVariable UUID id
-    ) {
-        return ResponseEntity.ok(
-                foodListingService.getListingById(id)
-        );
-    }
-
-    // BUSINESS — свои объявления
+    // Fixed route for frontend's /listings/my
     @GetMapping("/my")
     @PreAuthorize("hasRole('BUSINESS')")
     public ResponseEntity<List<FoodListingResponse>> getMyListings() {
-        return ResponseEntity.ok(
-                foodListingService.getMyListings()
-        );
+        return ResponseEntity.ok(foodListingService.getMyListings());
     }
 
-    // BUSINESS — изменить своё объявление
-    @PutMapping("/{id}")
-    @PreAuthorize("hasRole('BUSINESS')")
-    public ResponseEntity<FoodListingResponse> updateListing(
-            @PathVariable UUID id,
-            @RequestBody UpdateFoodListingRequest request
-    ) {
-        return ResponseEntity.ok(
-                foodListingService.updateListing(id, request)
-        );
-    }
-
-    // BUSINESS — отменить своё объявление
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('BUSINESS')")
-    public ResponseEntity<Void> cancelListing(
-            @PathVariable UUID id
-    ) {
-        foodListingService.cancelListing(id);
-
-        return ResponseEntity.noContent().build();
-    }
-
-    // CUSTOMER — объявления рядом
+    // /api/listings/nearby?latitude=43.2389&longitude=76.8897&radius=10&city=ALMATY
     @GetMapping("/nearby")
     public ResponseEntity<List<FoodListingResponse>> getNearbyListings(
             @RequestParam double latitude,
             @RequestParam double longitude,
-            @RequestParam(defaultValue = "5") double radius
-    ) {
-        return ResponseEntity.ok(
-                foodListingService.getNearbyListings(
-                        latitude,
-                        longitude,
-                        radius
-                )
-        );
+            @RequestParam(defaultValue = "5") double radius,
+            @RequestParam(required = false) String city) {
+        return ResponseEntity.ok(foodListingService.getNearbyListings(latitude, longitude, radius, city));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<FoodListingResponse> getListingById(@PathVariable UUID id) {
+        return ResponseEntity.ok(foodListingService.getListingById(id));
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasRole('BUSINESS')")
+    public ResponseEntity<FoodListingResponse> updateListing(
+            @PathVariable UUID id,
+            @RequestBody UpdateFoodListingRequest request) {
+        return ResponseEntity.ok(foodListingService.updateListing(id, request));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('BUSINESS')")
+    public ResponseEntity<Void> cancelListing(@PathVariable UUID id) {
+        foodListingService.cancelListing(id);
+        return ResponseEntity.noContent().build();
     }
 }
