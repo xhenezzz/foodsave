@@ -49,7 +49,7 @@ class AiListingServiceTest {
 
     @Test void analyzesPhotoAndSendsInlineImage() throws IOException {
         String response = """
-                {"candidates":[{"content":{"parts":[{"text":"{\"detectedProduct\":\"Круассан\",\"title\":\"Круассан с шоколадом\",\"description\":\"Круассан с шоколадной начинкой.\",\"suggestedCategory\":\"BAKERY\",\"ocrText\":\"Масса нетто 250 г\",\"label\":{\"brand\":\"\",\"netWeight\":\"250 г\",\"ingredients\":\"\",\"allergens\":\"\",\"expiryDateText\":\"\",\"storageConditions\":\"\"},\"warnings\":[\"Проверь состав на упаковке\"]}"}]}}]}
+                {"candidates":[{"content":{"parts":[{"text":"{\\"detectedProduct\\":\\"Круассан\\",\\"title\\":\\"Круассан с шоколадом\\",\\"description\\":\\"Круассан с шоколадной начинкой.\\",\\"suggestedCategory\\":\\"BAKERY\\",\\"ocrText\\":\\"Масса нетто 250 г\\",\\"label\\":{\\"brand\\":\\"\\",\\"netWeight\\":\\"250 г\\",\\"ingredients\\":\\"\\",\\"allergens\\":\\"\\",\\"expiryDateText\\":\\"\\",\\"storageConditions\\":\\"\\"},\\"warnings\\":[\\"Проверь состав на упаковке\\"]}"}]}}]}
                 """;
         var captured = new AtomicReference<String>();
         var service = serverWith(200, response, captured);

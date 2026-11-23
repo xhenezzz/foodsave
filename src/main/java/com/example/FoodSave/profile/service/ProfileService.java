@@ -20,7 +20,8 @@ public class ProfileService {
     private final UserRepository repository;
     private final PasswordEncoder passwordEncoder;
 
-    private double calculateReliability(User user) {
+    /** Same rule as LoyaltyService: without completed/no-show history reliability is unknown. */
+    private Double calculateReliability(User user) {
 
         int completed = user.getCompletedOrders() == null
                 ? 0
@@ -33,7 +34,7 @@ public class ProfileService {
         int total = completed + noShows;
 
         if (total == 0) {
-            return 100.0;
+            return null;
         }
 
         return Math.round(
@@ -51,6 +52,10 @@ public class ProfileService {
         User user = repository.findById(userPrincipal.getId())
                 .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
 
+        return toResponse(user);
+    }
+
+    private ProfileResponse toResponse(User user) {
         return new ProfileResponse(
                 user.getId(),
                 user.getFsId(),
@@ -63,7 +68,8 @@ public class ProfileService {
                 user.getFoodPoints(),
                 user.getCompletedOrders(),
                 user.getNoShowCount(),
-                calculateReliability(user)
+                calculateReliability(user),
+                user.isEmailVerified()
         );
     }
 
@@ -95,22 +101,7 @@ public class ProfileService {
         user.setPhoneNumber(request.getPhoneNumber());
         user.setCity(request.getCity());
 
-        User savedUser = repository.save(user);
-
-        return new ProfileResponse(
-                user.getId(),
-                user.getFsId(),
-                user.getUsername(),
-                user.getEmail(),
-                user.getPhoneNumber(),
-                user.getCity(),
-                user.getRole(),
-                user.getVerificationStatus(),
-                user.getFoodPoints(),
-                user.getCompletedOrders(),
-                user.getNoShowCount(),
-                calculateReliability(user)
-        );
+        return toResponse(repository.save(user));
     }
 
     public void changePassword(ChangePasswordRequest request) {

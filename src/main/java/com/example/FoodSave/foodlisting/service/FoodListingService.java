@@ -161,15 +161,15 @@ public class FoodListingService {
                         .getAuthentication()
                         .getPrincipal();
 
-        // User.id -> BusinessProfile
+        // User.id -> BusinessProfile. A business without a profile simply has no listings yet;
+        // failing here broke the whole business dashboard for freshly registered accounts.
         BusinessProfile businessProfile =
                 businessProfileRepository
                         .findByUserId(userPrincipal.getId())
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Профиль бизнеса не найден"
-                                )
-                        );
+                        .orElse(null);
+        if (businessProfile == null) {
+            return List.of();
+        }
 
         return foodListingRepository
                 .findByBusinessId(

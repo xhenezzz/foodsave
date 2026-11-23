@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.UUID;
@@ -26,6 +27,9 @@ public class AuthService {
     private final JwtService jwtService;
     private final EmailVerificationService emailVerificationService;
 
+    // Transactional: if the verification email cannot be sent, the user row is rolled back,
+    // otherwise the account got stuck as "Email уже занят" without any way to verify it.
+    @Transactional
     public RegistrationResponse register(RegistrationDto dto) {
         if (repository.existsByEmail(dto.getEmail())) {
             throw new RuntimeException("Email уже занят");
@@ -69,10 +73,14 @@ public class AuthService {
 
     public AuthResponse login(LoginDto loginDto) {
 
-        User user = repository.findByEmail(loginDto.getEmail())
-                .orElseThrow(() -> new RuntimeException("Неверный логин или пароль"));
+        if (loginDto.getEmail() == null || loginDto.getPassword() == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Неверный логин или пароль");
+        }
+        User user = repository.findByEmail(loginDto.getEmail().trim())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNAUTHORIZED, "Неверный логин или пароль"));
         if (!passwordEncoder.matches(loginDto.getPassword(), user.getPassword())) {
-            throw new RuntimeException("Неверный логин или пароль");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Неверный логин или пароль");
         }
         if (!user.isEmailVerified()) {
             throw new ResponseStatusException(

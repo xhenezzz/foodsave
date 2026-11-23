@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Leaf, LogOut, RefreshCw, ScanLine } from "lucide-react";
-import { api } from "./api";
+import { api, httpStatus } from "./api";
 import { parseImpact } from "./impact";
 import type { BusinessProfile, City, FoodCategory, FoodSaveQrResponse, Impact, Listing, Loyalty, Order, Profile, Review } from "./types";
 import { errText, confirmedPayment, coordinatesCity, listingsForCity, listingAvailable, listingCity, orderPaidByServer, cityName } from "./utils";
@@ -117,7 +117,7 @@ export default function App() {
         // Никогда не используем публичный /listings для кабинета бизнеса.
         const [biz, mine, userRating, userReviews] = await Promise.all([
           api.getBusinessProfile().catch(error => {
-            if (/404|business profile not found|профиль бизнеса не найден/i.test(String(error))) return null;
+            if (httpStatus(error) === 404 || /business profile not found|профиль бизнеса не найден/i.test(String(error))) return null;
             throw error;
           }),
           api.getMyListings(),
@@ -147,10 +147,15 @@ export default function App() {
       }
     } catch (error) {
       const message = errText(error, "Ошибка загрузки данных");
-      if (/HTTP 401|HTTP 403|unauthorized|invalid token/i.test(message) && firstLoad) {
+      const status = httpStatus(error);
+      const sessionExpired = status === 401 || status === 403 || /HTTP 401|HTTP 403|unauthorized|invalid token/i.test(message);
+      if (sessionExpired) {
+        // An expired JWT must log the user out on any refresh, not only on the first load;
+        // otherwise every later request fails with a cryptic 403 toast.
         localStorage.removeItem("foodsave_token");
         setAuthenticated(false);
         setProfile(null);
+        if (!firstLoad) setToast({type:"error",text:"Сессия истекла. Войди снова."});
       } else setToast({type:"error",text:message});
     } finally {
       setBusy(false);
@@ -162,8 +167,10 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("payment") !== "return") return;
     const paymentOrderId = params.get("orderId") ?? "";
+    // replaceState alone left `route` stale, so the URL said /orders while another page rendered.
+    const openOrders = () => navigate("/orders", true);
     if (!paymentOrderId) {
-      history.replaceState({}, "", "/orders");
+      openOrders();
       return;
     }
     let cancelled = false;
@@ -175,13 +182,13 @@ export default function App() {
           if (payment.status === "SUCCESS") {
             await refresh();
             if (!cancelled) setToast({type:"success",text:"Оплата подтверждена Stripe. QR-код доступен в заказе."});
-            history.replaceState({}, "", "/orders");
+            openOrders();
             return;
           }
           if (payment.status === "FAILED") {
             await refresh();
             if (!cancelled) setToast({type:"error",text:"Платёж не прошёл или бронь истекла. Можно попробовать снова."});
-            history.replaceState({}, "", "/orders");
+            openOrders();
             return;
           }
         } catch {
@@ -192,7 +199,7 @@ export default function App() {
       if (!cancelled) {
         await refresh();
         setToast({type:"success",text:"Stripe вернул тебя в FoodSave. Проверка платежа ещё идёт — обнови заказы чуть позже."});
-        history.replaceState({}, "", "/orders");
+        openOrders();
       }
     }
     void waitForStripeWebhook();
@@ -451,16 +458,17 @@ export default function App() {
       onLogin={openLogin}
       onHome={openHome}
     />
-    {toast && <Toast t={toast}/>}
+    {toast && <Toast key={`${toast.type}:${toast.text}`} t={toast}/>}
   </>;
   if (initializing) return <div className="app-loading"><Leaf size={38}/><b>FoodSave</b><p>Загружаем твой аккаунт…</p></div>;
   if (!authenticated || !profile) return <>
     <Landing onAuth={mode=>{setAuthMode(mode);setAuthOpen(true);}}/>
     {authOpen&&<AuthModal mode={authMode} loading={busy} onClose={()=>setAuthOpen(false)} onMode={setAuthMode} onLogin={login} onRegister={register}/>}
-    {toast&&<Toast t={toast}/>}
+    {toast&&<Toast key={`${toast.type}:${toast.text}`} t={toast}/>}
   </>;
   const isBusiness=profile.role==="BUSINESS";
   const activeRoute=isBusiness?"/business":route==="/orders"?"/orders":"/discover";
+  const reservedCount=orders.filter(o=>o.status==="RESERVED").length;
   function onNav(event:React.MouseEvent<HTMLAnchorElement>,target:Route){
     if(event.button===0&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey){event.preventDefault();navigate(target);}
   }
@@ -470,7 +478,7 @@ export default function App() {
       <nav aria-label="Основная навигация">
         {isBusiness?<a className={activeRoute==="/business"?"nav-active":""} href="/business" onClick={event=>onNav(event,"/business")}>Кабинет бизнеса</a>:<>
           <a className={activeRoute==="/discover"?"nav-active":""} href="/discover" onClick={event=>onNav(event,"/discover")}>Предложения</a>
-          <a className={activeRoute==="/orders"?"nav-active":""} href="/orders" onClick={event=>onNav(event,"/orders")}>Мои заказы <span className="nav-count">{orders.filter(o=>o.status==="RESERVED").length}</span></a>
+          <a className={activeRoute==="/orders"?"nav-active":""} href="/orders" onClick={event=>onNav(event,"/orders")}>Мои заказы <span className="nav-count" key={reservedCount}>{reservedCount}</span></a>
         </>}
       </nav>
       <div className="actions"><button className="icon-btn" onClick={()=>void refresh()} title="Обновить данные" aria-label="Обновить данные" disabled={busy}><RefreshCw size={17} className={busy?"spin":""}/></button>
@@ -479,7 +487,7 @@ export default function App() {
         <button className="icon-btn" onClick={logout} title="Выйти" aria-label="Выйти из аккаунта"><LogOut size={17}/></button>
       </div>
     </div></header>
-    <main>
+    <main key={activeRoute} className="page-transition">
       {!isBusiness&&activeRoute==="/discover"&&<DiscoverPage city={profile.city} listings={customerListings} hiddenUnknown={hiddenUnknown} nearby={nearby} coords={coords} locating={locating} onLocate={locate} onShowAll={()=>void showAllListings()} onOpen={listing=>{setSelected(listing);setDialog("order")}} onOrders={()=>navigate("/orders")}/>}
       {!isBusiness&&activeRoute==="/orders"&&<OrdersPage profile={profile} orders={orders} paidIds={confirmedPaid} payingId={payingId} onPay={pay} onQr={showOrderQr} onReview={order=>{setSelectedOrder(order);setDialog("review")}} onCancel={cancelOrder} onDiscover={()=>navigate("/discover")} onImpact={loadImpact}/>}
       {isBusiness&&<BusinessPage business={business} listings={myListings} rating={rating} reviewCount={reviews.length} onProfile={()=>setDialog("business")} onCreate={()=>{setSelected(null);setDialog("listing")}} onEdit={listing=>{setSelected(listing);setDialog("listing")}} onCancel={cancelListing} onScanner={()=>setDialog("scanner")}/>}
@@ -504,6 +512,6 @@ export default function App() {
     />}
     {dialog==="business"&&isBusiness&&<BusinessModal business={business} city={profile.city} close={()=>setDialog(null)} save={saveBusiness}/>}
     {dialog==="scanner"&&isBusiness&&<ScannerModal close={()=>setDialog(null)} scan={scanQr}/>}
-    {toast&&<Toast t={toast}/>}
+    {toast&&<Toast key={`${toast.type}:${toast.text}`} t={toast}/>}
   </div>;
 }

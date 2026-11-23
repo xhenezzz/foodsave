@@ -9,9 +9,9 @@ import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.MailPreparationException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -76,7 +76,8 @@ public class EmailVerificationService {
         return token;
     }
 
-    @Async
+    // Sent synchronously (the app has no @EnableAsync): a delivery failure must reach the caller
+    // so registration is rolled back and the user sees a clear error.
     public void sendVerificationEmail(String email, String rawToken) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
@@ -92,7 +93,7 @@ public class EmailVerificationService {
             mailSender.send(message);
 
         } catch (MessagingException e) {
-            throw new RuntimeException("Ошибка отправки на почту: " + email + " | ", e);
+            throw new MailPreparationException("Could not build verification email", e);
         }
     }
 

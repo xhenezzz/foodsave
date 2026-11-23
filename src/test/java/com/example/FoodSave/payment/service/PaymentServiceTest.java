@@ -7,13 +7,14 @@ import com.example.FoodSave.foodlisting.entity.FoodListing;
 import com.example.FoodSave.order.entity.Order;
 import com.example.FoodSave.order.entity.OrderStatus;
 import com.example.FoodSave.order.repository.OrderRepository;
-import com.example.FoodSave.payment.dto.DemoPaymentDecision;
 import com.example.FoodSave.payment.entity.Payment;
 import com.example.FoodSave.payment.entity.PaymentStatus;
 import com.example.FoodSave.payment.repo.PaymentRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -26,26 +27,28 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+/** Stripe checks that run before any network call to Stripe. */
 class PaymentServiceTest {
     private final PaymentRepository payments = mock(PaymentRepository.class);
     private final OrderRepository orders = mock(OrderRepository.class);
-    private final PaymentService service = new PaymentService(payments, orders);
+    private final StripePaymentService service =
+            new StripePaymentService(payments, orders, new ObjectMapper());
     private final UUID orderId = UUID.randomUUID();
+    private User customer;
     private Order order;
 
     @BeforeEach
     void setup() {
-        reset(payments, orders);
-        ReflectionTestUtils.setField(service, "demoEnabled", true);
-        User user = new User();
-        user.setId(UUID.randomUUID());
-        user.setRole(Role.CUSTOMER);
-        var principal = new UserPrincipal(user);
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
+        ReflectionTestUtils.setField(service, "secretKey", "sk_test_unit");
+        ReflectionTestUtils.setField(service, "configuredCurrency", "kzt");
+        ReflectionTestUtils.setField(service, "frontendUrl", "http://localhost:5173");
+
+        customer = new User();
+        customer.setId(UUID.randomUUID());
+        customer.setRole(Role.CUSTOMER);
+        authenticate(customer);
 
         FoodListing listing = new FoodListing();
         LocalDateTime future = LocalDateTime.now(ZoneId.of("Asia/Almaty")).plusHours(3);
@@ -53,76 +56,99 @@ class PaymentServiceTest {
         listing.setProductExpiresAt(future.plusHours(3));
         order = new Order();
         order.setId(orderId);
-        order.setUser(user);
+        order.setUser(customer);
         order.setListing(listing);
         order.setStatus(OrderStatus.RESERVED);
         order.setTotalPrice(new BigDecimal("2500.00"));
         order.setExpiresAt(future);
         order.setPickupEnd(future);
         when(orders.findByIdForUpdate(orderId)).thenReturn(Optional.of(order));
-        when(payments.save(any(Payment.class))).thenAnswer(i -> i.getArgument(0));
     }
 
-    @AfterEach void cleanup(){SecurityContextHolder.clearContext();}
-
-    @Test void startDoesNotSetSuccess() {
-        when(payments.findByOrderId(orderId)).thenReturn(Optional.empty());
-        var response = service.startDemoPayment(orderId);
-        assertEquals(PaymentStatus.PENDING, response.getStatus());
-        verify(payments).save(argThat(p -> p.getStatus() == PaymentStatus.PENDING));
+    @AfterEach
+    void cleanup() {
+        SecurityContextHolder.clearContext();
     }
 
-    @Test void approveAfterPendingMarksSuccess() {
-        Payment payment = pending();
-        when(payments.findByOrderId(orderId)).thenReturn(Optional.of(payment));
-        assertEquals(PaymentStatus.SUCCESS,
-                service.confirmDemoPayment(orderId, DemoPaymentDecision.APPROVE).getStatus());
-    }
-
-    @Test void declineAfterPendingMarksFailed() {
-        Payment payment = pending();
-        when(payments.findByOrderId(orderId)).thenReturn(Optional.of(payment));
-        assertEquals(PaymentStatus.FAILED,
-                service.confirmDemoPayment(orderId, DemoPaymentDecision.DECLINE).getStatus());
-    }
-
-    @Test void cannotConfirmWithoutSession() {
-        when(payments.findByOrderId(orderId)).thenReturn(Optional.empty());
-        assertThrows(ResponseStatusException.class,
-                () -> service.confirmDemoPayment(orderId, DemoPaymentDecision.APPROVE));
-    }
-
-    @Test void repeatedSuccessIsIdempotent() {
-        Payment payment = pending();
-        payment.setStatus(PaymentStatus.SUCCESS);
-        when(payments.findByOrderId(orderId)).thenReturn(Optional.of(payment));
-        assertEquals(PaymentStatus.SUCCESS,
-                service.confirmDemoPayment(orderId, DemoPaymentDecision.APPROVE).getStatus());
-        verify(payments, never()).save(any(Payment.class));
-    }
-
-    @Test void cannotPaySomeoneElsesOrder() {
-        User differentUser = new User();differentUser.setId(UUID.randomUUID());
-        order.setUser(differentUser);
-        assertThrows(ResponseStatusException.class, () -> service.startDemoPayment(orderId));
+    @Test
+    void checkoutFailsClearlyWhenStripeIsNotConfigured() {
+        ReflectionTestUtils.setField(service, "secretKey", "");
+        var error = assertThrows(ResponseStatusException.class, () -> service.startCheckout(orderId));
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, error.getStatusCode());
         verifyNoInteractions(payments);
     }
 
-    @Test void refusesExpiredOrder() {
+    @Test
+    void cannotPaySomeoneElsesOrder() {
+        User other = new User();
+        other.setId(UUID.randomUUID());
+        order.setUser(other);
+        var error = assertThrows(ResponseStatusException.class, () -> service.startCheckout(orderId));
+        assertEquals(HttpStatus.FORBIDDEN, error.getStatusCode());
+        verifyNoInteractions(payments);
+    }
+
+    @Test
+    void businessCannotPay() {
+        User business = new User();
+        business.setId(UUID.randomUUID());
+        business.setRole(Role.BUSINESS);
+        authenticate(business);
+        var error = assertThrows(ResponseStatusException.class, () -> service.startCheckout(orderId));
+        assertEquals(HttpStatus.FORBIDDEN, error.getStatusCode());
+    }
+
+    @Test
+    void refusesExpiredOrder() {
         order.setExpiresAt(LocalDateTime.now(ZoneId.of("Asia/Almaty")).minusMinutes(1));
-        assertThrows(ResponseStatusException.class, () -> service.startDemoPayment(orderId));
+        var error = assertThrows(ResponseStatusException.class, () -> service.startCheckout(orderId));
+        assertEquals(HttpStatus.CONFLICT, error.getStatusCode());
+        verifyNoInteractions(payments);
     }
 
-    @Test void refusesWhenDemoDisabled() {
-        ReflectionTestUtils.setField(service, "demoEnabled", false);
-        assertThrows(ResponseStatusException.class, () -> service.startDemoPayment(orderId));
-        verifyNoInteractions(orders, payments);
+    @Test
+    void refusesCancelledOrder() {
+        order.setStatus(OrderStatus.CANCELLED);
+        var error = assertThrows(ResponseStatusException.class, () -> service.startCheckout(orderId));
+        assertEquals(HttpStatus.CONFLICT, error.getStatusCode());
     }
 
-    private Payment pending() {
+    @Test
+    void alreadyPaidOrderIsReturnedWithoutNewSession() {
+        Payment payment = payment(PaymentStatus.SUCCESS);
+        when(payments.findByOrderId(orderId)).thenReturn(Optional.of(payment));
+        var response = service.startCheckout(orderId);
+        assertEquals(PaymentStatus.SUCCESS, response.status());
+        assertNull(response.clientSecret());
+        verify(payments, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void paymentStatusIsReadFromServer() {
+        when(payments.findByOrderId(orderId)).thenReturn(Optional.of(payment(PaymentStatus.PENDING)));
+        assertEquals(PaymentStatus.PENDING, service.getPaymentStatus(orderId).getStatus());
+    }
+
+    @Test
+    void paymentStatusIsNotFoundBeforeCheckout() {
+        when(payments.findByOrderId(orderId)).thenReturn(Optional.empty());
+        var error = assertThrows(ResponseStatusException.class, () -> service.getPaymentStatus(orderId));
+        assertEquals(HttpStatus.NOT_FOUND, error.getStatusCode());
+    }
+
+    private void authenticate(User user) {
+        var principal = new UserPrincipal(user);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
+    }
+
+    private Payment payment(PaymentStatus status) {
         Payment p = new Payment();
-        p.setId(UUID.randomUUID());p.setOrder(order);
-        p.setAmount(order.getTotalPrice());p.setStatus(PaymentStatus.PENDING);
+        p.setId(UUID.randomUUID());
+        p.setOrder(order);
+        p.setAmount(order.getTotalPrice());
+        p.setCurrency("KZT");
+        p.setStatus(status);
         p.setCreatedAt(LocalDateTime.now(ZoneId.of("Asia/Almaty")));
         return p;
     }

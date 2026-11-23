@@ -2,7 +2,7 @@ import { useEffect, useId, useState } from "react";
 import { BarChart3, Leaf, ReceiptText, RefreshCw, ShoppingBasket, TrendingUp, Wallet } from "lucide-react";
 import { api } from "../api";
 import type { BusinessDashboard } from "../types";
-import { money } from "../utils";
+import { money, stagger } from "../utils";
 import "./BusinessStatistics.css";
 
 const decimal = (n: number, digits = 1) => new Intl.NumberFormat("ru-RU", {maximumFractionDigits: digits}).format(n);
@@ -22,8 +22,9 @@ function RevenueChart({data}: {data: BusinessDashboard["revenueByDay"]}) {
   return <div className="fs7-chart-scroll"><svg className="fs7-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="График успешных оплат по дням">
     <defs><linearGradient id={id} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#25b579" stopOpacity=".30"/><stop offset="100%" stopColor="#25b579" stopOpacity="0"/></linearGradient></defs>
     {[0,.25,.5,.75,1].map((f,i)=><g key={i}><line x1={padX} x2={width-padX} y1={height-padY-f*innerH} y2={height-padY-f*innerH} stroke="currentColor" opacity=".12"/><text x={padX-8} y={height-padY-f*innerH+4} textAnchor="end" className="fs7-chart-label">{decimal(max*f,0)}</text></g>)}
-    <path d={area} fill={`url(#${id})`}/><path d={line} fill="none" stroke="#18a66d" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round"/>
-    {coords.map((p,i) => data[i].revenue > 0 && data.length <= 30 ? <circle key={i} cx={p.x} cy={p.y} r="3" fill="#18a66d"><title>{`${dayLabel(data[i].date)}: ${money(data[i].revenue)}`}</title></circle>:null)}
+    {/* Keyed by the path so the line re-draws when the period or data changes. */}
+    <path key={`a${area}`} className="fs7-area" d={area} fill={`url(#${id})`}/><path key={`l${line}`} className="fs7-line" pathLength={1} d={line} fill="none" stroke="#18a66d" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round"/>
+    {coords.map((p,i) => data[i].revenue > 0 && data.length <= 30 ? <circle key={`${line}-${i}`} style={stagger(i)} cx={p.x} cy={p.y} r="3" fill="#18a66d"><title>{`${dayLabel(data[i].date)}: ${money(data[i].revenue)}`}</title></circle>:null)}
     {labels.map(i=><text key={i} x={coords[i].x} y={height-4} textAnchor="middle" className="fs7-chart-label">{dayLabel(data[i].date)}</text>)}
   </svg></div>;
 }
@@ -58,7 +59,7 @@ export function BusinessStatistics() {
     {loading&&!data&&<p className="fs7-muted">Загружаем аналитику…</p>}
     {data&&<>
       {loading&&<p className="fs7-muted" role="status">Обновляем…</p>}
-      <div className="fs7-kpis">{cards.map(c=><div className="fs7-kpi" key={c.name}><div className="fs7-kpi-title"><span>{c.name}</span><c.icon size={19}/></div><strong>{c.value}</strong><small>{c.note}</small></div>)}</div>
+      <div className="fs7-kpis">{cards.map((c,index)=><div className="fs7-kpi fs-stagger" style={stagger(index)} key={c.name}><div className="fs7-kpi-title"><span>{c.name}</span><c.icon size={19}/></div><strong>{c.value}</strong><small>{c.note}</small></div>)}</div>
       <div className="fs7-card"><div className="fs7-card-head"><div><h3>Тестовая выручка по дням</h3><p className="fs7-muted">Дата успешной оплаты · ₸</p></div><b>{money(data.revenue)}</b></div><RevenueChart data={data.revenueByDay}/></div>
       <div className="fs7-two"><div className="fs7-card"><div className="fs7-card-head"><div><h3>Топ-5 продуктов</h3><p className="fs7-muted">По количеству полученных единиц</p></div></div>{data.topProducts.length?<div className="fs7-products">{data.topProducts.map((p,i)=><div className="fs7-product" key={p.listingId}><span className="fs7-rank">{i+1}</span><div><b>{p.title}</b><small>{p.completedOrders} заказов · {money(p.revenue)} по заказам</small></div><strong>{p.quantitySold} шт.</strong></div>)}</div>:<p className="fs7-muted">За этот период нет завершённых заказов.</p>}</div>
       <div className="fs7-card"><div className="fs7-card-head"><div><h3>Экологический эффект</h3><p className="fs7-muted">Приблизительная оценка</p></div><Leaf size={24}/></div><div className="fs7-big">{decimal(data.foodSavedKg,2)} <span>кг еды</span></div><div className="fs7-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={data.rescuedFoodPercent}><div style={{width:`${Math.max(0,Math.min(100,data.rescuedFoodPercent))}%`}}/></div><p className="fs7-muted">{decimal(data.rescuedFoodPercent,1)}% от известной массы оплаченных заказов получили статус COMPLETED</p><div className="fs7-co2">≈ {decimal(data.estimatedCo2SavedKg,2)} кг CO₂e — оценка по коэффициенту 2,5</div></div></div>

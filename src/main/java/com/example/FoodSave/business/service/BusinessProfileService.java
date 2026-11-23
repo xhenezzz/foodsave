@@ -1,6 +1,7 @@
 package com.example.FoodSave.business.service;
 
 import com.example.FoodSave.auth.cfg.UserPrincipal;
+import com.example.FoodSave.auth.entity.City;
 import com.example.FoodSave.auth.entity.Role;
 import com.example.FoodSave.auth.entity.User;
 import com.example.FoodSave.auth.repo.UserRepository;
@@ -10,9 +11,13 @@ import com.example.FoodSave.business.dto.UpdateBusinessProfileRequest;
 import com.example.FoodSave.business.entity.BusinessProfile;
 import com.example.FoodSave.business.repo.BusinessProfileRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -21,6 +26,12 @@ public class BusinessProfileService {
     private final BusinessProfileRepository businessProfileRepository;
     private final UserRepository userRepository;
     private final GeocodingService geocodingService;
+
+    // Same centres and radius the frontend uses to decide a listing's city.
+    private static final double MAX_CITY_RADIUS_KM = 90.0;
+    private static final Map<City, double[]> CITY_CENTERS = Map.of(
+            City.ALMATY, new double[]{43.238949, 76.889709},
+            City.ASTANA, new double[]{51.169392, 71.449074});
 
     @Transactional
     public BusinessProfileResponse createProfile(
@@ -70,11 +81,9 @@ public class BusinessProfileService {
                 request.getAddress()
         );
 
-        GeocodingService.Coordinates coordinates =
-                geocodingService.geocode(
-                        user.getCity(),
-                        request.getAddress()
-                );
+        GeocodingService.Coordinates coordinates = resolveCoordinates(
+                user.getCity(), request.getAddress(),
+                request.getLatitude(), request.getLongitude());
 
         profile.setLatitude(
                 coordinates.latitude()
@@ -100,7 +109,8 @@ public class BusinessProfileService {
                 businessProfileRepository
                         .findByUserId(principal.getId())
                         .orElseThrow(() ->
-                                new RuntimeException(
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND,
                                         "Профиль бизнеса не найден"
                                 )
                         );
@@ -145,15 +155,10 @@ public class BusinessProfileService {
                 request.getAddress()
         );
 
-        /*
-         * При изменении адреса заново получаем координаты.
-         * Город снова берём из User.
-         */
-        GeocodingService.Coordinates coordinates =
-                geocodingService.geocode(
-                        user.getCity(),
-                        request.getAddress()
-                );
+        // Метка на карте приоритетнее геокодирования адреса. Город берём из User.
+        GeocodingService.Coordinates coordinates = resolveCoordinates(
+                user.getCity(), request.getAddress(),
+                request.getLatitude(), request.getLongitude());
 
         profile.setLatitude(
                 coordinates.latitude()
@@ -167,6 +172,37 @@ public class BusinessProfileService {
                 businessProfileRepository.save(profile);
 
         return toResponse(updated);
+    }
+
+    /**
+     * The business owner marks the exact spot on the map; that point used to be
+     * silently discarded and replaced by Nominatim geocoding of the address.
+     */
+    private GeocodingService.Coordinates resolveCoordinates(
+            City city, String address, Double latitude, Double longitude) {
+        if (latitude == null && longitude == null) {
+            return geocodingService.geocode(city, address);
+        }
+        if (latitude == null || longitude == null
+                || !Double.isFinite(latitude) || !Double.isFinite(longitude)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Укажи обе координаты метки на карте");
+        }
+        double[] center = CITY_CENTERS.get(city);
+        if (center != null && distanceKm(latitude, longitude, center[0], center[1]) > MAX_CITY_RADIUS_KM) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Метка на карте должна находиться в пределах города " + city.getDisplayName());
+        }
+        return new GeocodingService.Coordinates(latitude, longitude);
+    }
+
+    private static double distanceKm(double lat1, double lon1, double lat2, double lon2) {
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLon = Math.toRadians(lon2 - lon1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        return 6371.0 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
     private UserPrincipal getCurrentUserPrincipal() {

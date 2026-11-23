@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { ListingImage } from "../types";
+import { errText } from "../utils";
 
 export function useListingCover(listingId:string, updateKey=0) {
   const [url,setUrl]=useState<string|null>(null);
@@ -33,7 +34,7 @@ export function PhotoManager({listingId,onRemove}:{listingId:string;onRemove?:(i
         catch{return img;}
       }));
       if(alive)setPhotos(result);
-    }).catch(e=>{if(alive)setError(String(e));});
+    }).catch(e=>{if(alive)setError(errText(e,"Не удалось загрузить фотографии"));});
     return ()=>{alive=false;urls.forEach(u=>URL.revokeObjectURL(u));};
   },[listingId]);
   return <div className="photo-manager">
@@ -42,7 +43,7 @@ export function PhotoManager({listingId,onRemove}:{listingId:string;onRemove?:(i
       <button type="button" onClick={async()=>{
         if(!window.confirm("Удалить эту фотографию?"))return;
         try {await api.deleteListingImage(listingId,img.id);setPhotos(x=>x.filter(p=>p.id!==img.id));onRemove?.(img.id);}
-        catch(e){setError(String(e));}
+        catch(e){setError(errText(e,"Не удалось удалить фотографию"));}
       }}>Удалить</button>
     </div>)}
     {error&&<p role="alert">{error}</p>}

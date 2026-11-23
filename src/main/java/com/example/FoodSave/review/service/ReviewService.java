@@ -69,6 +69,11 @@ public class ReviewService {
             );
         }
 
+        // Колонка comment ограничена 1000 символами: иначе база вернёт 500.
+        if (request.getComment() != null && request.getComment().length() > 1000) {
+            throw new IllegalArgumentException("Комментарий не должен превышать 1000 символов");
+        }
+
         // Проверяем, что отзыв на этот заказ ещё не оставляли
         if (reviewRepository.existsByOrderId(request.getOrderId())) {
 

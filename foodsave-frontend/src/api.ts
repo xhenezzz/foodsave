@@ -25,6 +25,19 @@ function token(): string | null {
   return localStorage.getItem("foodsave_token");
 }
 
+/** Error with the HTTP status, so callers don't have to parse message text. */
+export class ApiError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+export const httpStatus = (error: unknown): number | null =>
+  error instanceof ApiError ? error.status : null;
+
 async function request<T>(
   path: string,
   options: RequestInit = {}
@@ -66,7 +79,7 @@ async function request<T>(
       }
     }
 
-    throw new Error(message);
+    throw new ApiError(message, response.status);
   }
 
   if (!text) {
@@ -94,7 +107,7 @@ export const api = {
     const response=await fetch(`${API_URL}/listings/${id}/images/${imageId}/content`,{
       headers:jwt?{Authorization:`Bearer ${jwt}`}:{},
     });
-    if(!response.ok) throw new Error(`Не удалось загрузить фото: HTTP ${response.status}`);
+    if(!response.ok) throw new ApiError(`Не удалось загрузить фото: HTTP ${response.status}`, response.status);
     return response.blob();
   },
 

@@ -1,4 +1,8 @@
+import type { CSSProperties } from "react";
 import type { City, Listing, Order } from "./types";
+
+/** Entrance-animation delay slot for list items (capped so long lists don't lag). */
+export const stagger = (index: number): CSSProperties => ({ "--i": Math.min(index, 12) } as CSSProperties);
 
 export const money = (value: number) => new Intl.NumberFormat("ru-RU").format(value) + " ₸";
 export const dt = (value: string) => new Date(value).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });

@@ -27,6 +27,8 @@ public class ProfileResponse {
 
     private Double reliability;
 
+    private boolean emailVerified;
+
     public ProfileResponse(
             UUID id,
             UUID fsId,
@@ -39,7 +41,8 @@ public class ProfileResponse {
             Integer foodPoints,
             Integer completedOrders,
             Integer noShowCount,
-            Double reliability
+            Double reliability,
+            boolean emailVerified
     ) {
         this.id = id;
         this.fsId = fsId;
@@ -53,5 +56,6 @@ public class ProfileResponse {
         this.completedOrders = completedOrders;
         this.noShowCount = noShowCount;
         this.reliability = reliability;
+        this.emailVerified = emailVerified;
     }
 }
