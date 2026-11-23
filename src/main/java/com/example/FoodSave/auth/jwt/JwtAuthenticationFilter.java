@@ -1,5 +1,8 @@
 package com.example.FoodSave.auth.jwt;
 
+import com.example.FoodSave.auth.cfg.UserPrincipal;
+import com.example.FoodSave.auth.entity.User;
+import com.example.FoodSave.auth.repo.UserRepository;
 import com.example.FoodSave.auth.service.JwtService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -23,6 +26,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final UserDetailsService userDetailsService;
+    private final UserRepository userRepository;
 
     @Override
     protected void doFilterInternal(
@@ -33,7 +37,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String path = request.getServletPath();
 
-        // Регистрация и логин не требуют JWT
         if (path.equals("/api/auth/register")
                 || path.equals("/api/auth/login")) {
 
@@ -43,7 +46,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String authHeader = request.getHeader("Authorization");
 
-        // JWT нет — просто пропускаем запрос дальше
         if (authHeader == null
                 || !authHeader.startsWith("Bearer ")) {
 
@@ -65,34 +67,39 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 UserDetails userDetails =
                         userDetailsService.loadUserByUsername(username);
 
-                if (jwtService.isTokenValid(jwt, userDetails)) {
+                if (jwtService.isTokenValid(jwt, userDetails) && userDetails instanceof UserPrincipal userPrincipal) {
 
-                    UsernamePasswordAuthenticationToken authToken =
-                            new UsernamePasswordAuthenticationToken(
-                                    userDetails,
-                                    null,
-                                    userDetails.getAuthorities()
-                            );
+                    boolean emailVerified = userRepository
+                            .findById(userPrincipal.getId())
+                            .map(User::isEmailVerified)
+                            .orElse(false);
 
-                    authToken.setDetails(
-                            new WebAuthenticationDetailsSource()
-                                    .buildDetails(request)
-                    );
+                    if(emailVerified){
+                        UsernamePasswordAuthenticationToken authToken =
+                                new UsernamePasswordAuthenticationToken(
+                                        userDetails,
+                                        null,
+                                        userDetails.getAuthorities()
+                                );
 
-                    SecurityContextHolder
-                            .getContext()
-                            .setAuthentication(authToken);
+                        authToken.setDetails(
+                                new WebAuthenticationDetailsSource()
+                                        .buildDetails(request)
+                        );
+
+                        SecurityContextHolder
+                                .getContext()
+                                .setAuthentication(authToken);
+                    }
                 }
             }
 
         } catch (UsernameNotFoundException e) {
 
-            // Пользователь удалён, а JWT остался старым
             SecurityContextHolder.clearContext();
 
         } catch (Exception e) {
 
-            // Невалидный/просроченный JWT
             SecurityContextHolder.clearContext();
         }
 

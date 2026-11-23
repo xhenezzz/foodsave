@@ -1,6 +1,7 @@
 package com.example.FoodSave.foodlisting.dto;
 
 import com.example.FoodSave.foodlisting.entity.ListingStatus;
+import com.example.FoodSave.foodlisting.entity.FoodCategory;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 
@@ -20,10 +21,13 @@ public class FoodListingResponse {
     private BigDecimal foodSavePrice;
 
     private Integer quantity;
+    private BigDecimal weightKg;
+    private Long version;
 
     private LocalDateTime pickupStart;
     private LocalDateTime pickupEnd;
     private LocalDateTime expiresAt;
+    private LocalDateTime productExpiresAt;
 
     private ListingStatus status;
 
@@ -37,4 +41,5 @@ public class FoodListingResponse {
 
     private Double latitude;
     private Double longitude;
+    private FoodCategory category;
 }

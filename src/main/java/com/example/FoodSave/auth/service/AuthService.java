@@ -4,13 +4,16 @@ import com.example.FoodSave.auth.cfg.UserPrincipal;
 import com.example.FoodSave.auth.dto.AuthResponse;
 import com.example.FoodSave.auth.dto.LoginDto;
 import com.example.FoodSave.auth.dto.RegistrationDto;
+import com.example.FoodSave.auth.dto.RegistrationResponse;
 import com.example.FoodSave.auth.entity.Role;
 import com.example.FoodSave.auth.entity.User;
 import com.example.FoodSave.auth.entity.VerificationStatus;
 import com.example.FoodSave.auth.repo.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.UUID;
 
@@ -21,8 +24,9 @@ public class AuthService {
     private final UserRepository repository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final EmailVerificationService emailVerificationService;
 
-    public AuthResponse register(RegistrationDto dto) {
+    public RegistrationResponse register(RegistrationDto dto) {
         if (repository.existsByEmail(dto.getEmail())) {
             throw new RuntimeException("Email уже занят");
         }
@@ -46,7 +50,6 @@ public class AuthService {
         user.setCity(dto.getCity());
         user.setFsId(UUID.randomUUID());
 
-        // CRITICAL: your previous code validated role but never assigned it.
         user.setRole(role);
 
         user.setVerificationStatus(VerificationStatus.UNVERIFIED);
@@ -54,16 +57,28 @@ public class AuthService {
         user.setTotalOrders(0);
         user.setCompletedOrders(0);
         user.setNoShowCount(0);
+        user.setEmailVerified(false);
 
         User savedUser = repository.save(user);
-        return new AuthResponse(jwtService.generateToken(new UserPrincipal(savedUser)));
+        String raw = emailVerificationService.createVerificationToken(savedUser);
+        emailVerificationService.sendVerificationEmail(user.getEmail(), raw);
+        return new RegistrationResponse(
+                "Письмо для подтверждения отправлено на email"
+        );
     }
 
     public AuthResponse login(LoginDto loginDto) {
+
         User user = repository.findByEmail(loginDto.getEmail())
                 .orElseThrow(() -> new RuntimeException("Неверный логин или пароль"));
         if (!passwordEncoder.matches(loginDto.getPassword(), user.getPassword())) {
             throw new RuntimeException("Неверный логин или пароль");
+        }
+        if (!user.isEmailVerified()) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Подтвердите электронную почту"
+            );
         }
         String jwt = jwtService.generateToken(new UserPrincipal(user));
         return new AuthResponse(jwt);

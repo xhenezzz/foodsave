@@ -33,4 +33,8 @@ public class OrderResponse {
     private LocalDateTime pickupStart;
 
     private LocalDateTime pickupEnd;
+
+    private boolean paid;
+
+    private com.example.FoodSave.payment.entity.PaymentStatus paymentStatus;
 }

@@ -2,11 +2,14 @@ package com.example.FoodSave.foodlisting.repo;
 
 import com.example.FoodSave.foodlisting.entity.FoodListing;
 import com.example.FoodSave.foodlisting.entity.ListingStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface FoodListingRepository extends JpaRepository<FoodListing, UUID> {
@@ -14,6 +17,10 @@ public interface FoodListingRepository extends JpaRepository<FoodListing, UUID> 
     List<FoodListing> findByStatus(ListingStatus status);
 
     List<FoodListing> findByBusinessId(UUID businessId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT f FROM FoodListing f WHERE f.id = :id")
+    Optional<FoodListing> findByIdForUpdate(@Param("id") UUID id);
 
     // Находим объявления внутри радиуса. Ранжирование производится сервисом,
     // а не SQL ORDER BY distance, потому что score учитывает несколько факторов.

@@ -7,6 +7,7 @@ import com.example.FoodSave.foodlisting.dto.CreateFoodListingRequest;
 import com.example.FoodSave.foodlisting.dto.FoodListingResponse;
 import com.example.FoodSave.foodlisting.dto.UpdateFoodListingRequest;
 import com.example.FoodSave.foodlisting.entity.FoodListing;
+import com.example.FoodSave.foodlisting.entity.FoodCategory;
 import com.example.FoodSave.foodlisting.entity.ListingStatus;
 import com.example.FoodSave.foodlisting.repo.FoodListingRepository;
 import com.example.FoodSave.review.repo.ReviewRepository;
@@ -50,85 +51,25 @@ public class FoodListingService {
                                 )
                         );
 
-        // Проверяем цену
-        if (request.getOriginalPrice()
-                .compareTo(request.getFoodSavePrice()) <= 0) {
-
-            throw new RuntimeException(
-                    "Цена FoodSave должна быть ниже обычной цены"
-            );
-        }
-
-        // Проверяем количество
-        if (request.getQuantity() == null
-                || request.getQuantity() <= 0) {
-
-            throw new RuntimeException(
-                    "Количество должно быть больше 0"
-            );
-        }
-
-        // Проверяем вес
-        if (request.getWeightKg() == null
-                || request.getWeightKg()
-                .compareTo(BigDecimal.ZERO) <= 0) {
-
-            throw new RuntimeException(
-                    "Вес должен быть больше 0"
-            );
-        }
-
-        // Проверяем цену FoodSave
-        if (request.getFoodSavePrice()
-                .compareTo(BigDecimal.ZERO) <= 0) {
-
-            throw new RuntimeException(
-                    "Цена должна быть больше 0"
-            );
-        }
-
-        LocalDateTime now =
-                LocalDateTime.now(
-                        ZoneId.of("Asia/Almaty")
-                );
-
-        if (request.getPickupStart().isBefore(now)) {
-            throw new RuntimeException(
-                    "Время начала получения не может быть в прошлом"
-            );
-        }
-
-        if (request.getPickupEnd().isBefore(now)) {
-            throw new RuntimeException(
-                    "Время окончания получения не может быть в прошлом"
-            );
-        }
-
-        if (request.getExpiresAt().isBefore(now)) {
-            throw new RuntimeException(
-                    "Время истечения предложения не может быть в прошлом"
-            );
-        }
-
-        if (request.getExpiresAt().isBefore(request.getPickupEnd())) {
-            throw new RuntimeException(
-                    "Время истечения предложения не может быть раньше окончания получения"
-            );
-        }
-
-        // Проверяем время получения
-        if (request.getPickupStart()
-                .isAfter(request.getPickupEnd())) {
-
-            throw new RuntimeException(
-                    "Начало получения не может быть позже окончания"
-            );
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Almaty"));
+        ListingRules.validate(
+                request.getTitle(), request.getDescription(),
+                request.getOriginalPrice(), request.getFoodSavePrice(),
+                request.getQuantity(), request.getWeightKg(),
+                request.getPickupStart(), request.getPickupEnd(),
+                request.getExpiresAt(), request.getProductExpiresAt(),
+                now, false);
+        if (request.getQuantity() <= 0) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "Для нового предложения количество должно быть больше 0");
         }
 
         FoodListing listing = new FoodListing();
 
         listing.setTitle(request.getTitle());
         listing.setDescription(request.getDescription());
+        listing.setCategory(request.getCategory() == null ? FoodCategory.OTHER : request.getCategory());
 
         listing.setOriginalPrice(
                 request.getOriginalPrice()
@@ -157,6 +98,7 @@ public class FoodListingService {
         listing.setExpiresAt(
                 request.getExpiresAt()
         );
+        listing.setProductExpiresAt(request.getProductExpiresAt());
 
         // Теперь здесь BusinessProfile, а не User
         listing.setBusiness(
@@ -250,97 +192,48 @@ public class FoodListingService {
                         .getAuthentication()
                         .getPrincipal();
 
-        FoodListing listing =
-                foodListingRepository.findById(id)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Объявление не найдено"
-                                )
-                        );
-
-        // Проверяем владельца объявления
-        if (!listing.getBusiness()
-                .getUser()
-                .getId()
-                .equals(userPrincipal.getId())) {
-
-            throw new RuntimeException(
-                    "Вы не можете изменять чужое объявление"
-            );
+        // Same pessimistic row lock as createOrder(); protects available stock.
+        FoodListing listing = foodListingRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new RuntimeException("Объявление не найдено"));
+        if (!listing.getBusiness().getUser().getId().equals(userPrincipal.getId())) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.FORBIDDEN, "Чужое объявление");
+        }
+        if (request.getVersion() == null || !request.getVersion().equals(listing.getVersion())) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "Объявление изменилось. Обнови страницу и повтори редактирование");
+        }
+        if (listing.getStatus() == ListingStatus.CANCELED
+                || listing.getStatus() == ListingStatus.EXPIRED) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT, "Объявление уже закрыто");
         }
 
-        // Проверяем цену
-        if (request.getOriginalPrice()
-                .compareTo(request.getFoodSavePrice()) <= 0) {
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Almaty"));
+        ListingRules.validate(
+                request.getTitle(), request.getDescription(),
+                request.getOriginalPrice(), request.getFoodSavePrice(),
+                request.getQuantity(), request.getWeightKg(),
+                request.getPickupStart(), request.getPickupEnd(),
+                request.getExpiresAt(), request.getProductExpiresAt(), now,
+                request.getPickupStart() != null
+                        && request.getPickupStart().equals(listing.getPickupStart()));
 
-            throw new RuntimeException(
-                    "Цена FoodSave должна быть ниже обычной цены"
-            );
-        }
-
-        // Проверяем количество
-        if (request.getQuantity() == null
-                || request.getQuantity() <= 0) {
-
-            throw new RuntimeException(
-                    "Количество должно быть больше 0"
-            );
-        }
-
-        // Проверяем вес
-        if (request.getWeightKg() == null
-                || request.getWeightKg()
-                .compareTo(BigDecimal.ZERO) <= 0) {
-
-            throw new RuntimeException(
-                    "Вес должен быть больше 0"
-            );
-        }
-
-        // Проверяем время
-        if (request.getPickupStart()
-                .isAfter(request.getPickupEnd())) {
-
-            throw new RuntimeException(
-                    "Начало получения не может быть позже окончания"
-            );
-        }
-
-        listing.setTitle(
-                request.getTitle()
-        );
-
-        listing.setDescription(
-                request.getDescription()
-        );
-
-        listing.setOriginalPrice(
-                request.getOriginalPrice()
-        );
-
-        listing.setFoodSavePrice(
-                request.getFoodSavePrice()
-        );
-
-        listing.setQuantity(
-                request.getQuantity()
-        );
-
-        listing.setWeightKg(
-                request.getWeightKg()
-        );
-
-        listing.setPickupStart(
-                request.getPickupStart()
-        );
-
-        listing.setPickupEnd(
-                request.getPickupEnd()
-        );
-
-        listing.setExpiresAt(
-                request.getExpiresAt()
-        );
+        listing.setTitle(request.getTitle().trim());
+        listing.setDescription(request.getDescription());
+        if (request.getCategory() != null) listing.setCategory(request.getCategory());
+        listing.setOriginalPrice(request.getOriginalPrice());
+        listing.setFoodSavePrice(request.getFoodSavePrice());
+        listing.setQuantity(request.getQuantity());
+        listing.setWeightKg(request.getWeightKg());
+        listing.setPickupStart(request.getPickupStart());
+        listing.setPickupEnd(request.getPickupEnd());
+        listing.setExpiresAt(request.getExpiresAt());
+        listing.setProductExpiresAt(request.getProductExpiresAt());
+        // Replenishing a SOLD_OUT listing makes it visible again, if dates are valid.
+        if (listing.getQuantity() == 0) listing.setStatus(ListingStatus.SOLD_OUT);
+        else if (listing.getStatus() == ListingStatus.SOLD_OUT) listing.setStatus(ListingStatus.ACTIVE);
 
         FoodListing updatedListing =
                 foodListingRepository.save(listing);
@@ -358,7 +251,7 @@ public class FoodListingService {
                         .getPrincipal();
 
         FoodListing listing =
-                foodListingRepository.findById(id)
+                foodListingRepository.findByIdForUpdate(id)
                         .orElseThrow(() ->
                                 new RuntimeException(
                                         "Объявление не найдено"
@@ -454,6 +347,7 @@ public class FoodListingService {
                 && listing.getQuantity() > 0
                 && listing.getExpiresAt() != null
                 && listing.getExpiresAt().isAfter(now)
+                && ListingRules.safeForPickup(listing.getProductExpiresAt(), now)
                 && listing.getPickupEnd() != null
                 && listing.getPickupEnd().isAfter(now);
     }
@@ -499,9 +393,12 @@ public class FoodListingService {
                 listing.getOriginalPrice(),
                 listing.getFoodSavePrice(),
                 listing.getQuantity(),
+                listing.getWeightKg(),
+                listing.getVersion(),
                 listing.getPickupStart(),
                 listing.getPickupEnd(),
                 listing.getExpiresAt(),
+                listing.getProductExpiresAt(),
                 listing.getStatus(),
                 businessProfile.getBusinessName(),
                 businessProfile.getUser().getCity() == null ? null : businessProfile.getUser().getCity().name(),
@@ -509,7 +406,8 @@ public class FoodListingService {
                 Math.round(distance * 10.0) / 10.0,
                 recommendationScore,
                 businessProfile.getLatitude(),
-                businessProfile.getLongitude()
+                businessProfile.getLongitude(),
+                listing.getCategory()
         );
     }
 
@@ -585,9 +483,12 @@ public class FoodListingService {
                 listing.getOriginalPrice(),
                 listing.getFoodSavePrice(),
                 listing.getQuantity(),
+                listing.getWeightKg(),
+                listing.getVersion(),
                 listing.getPickupStart(),
                 listing.getPickupEnd(),
                 listing.getExpiresAt(),
+                listing.getProductExpiresAt(),
                 listing.getStatus(),
                 businessProfile.getBusinessName(),
                 businessProfile.getUser().getCity() == null ? null : businessProfile.getUser().getCity().name(),
@@ -595,7 +496,8 @@ public class FoodListingService {
                 null,
                 recommendationScore,
                 businessProfile.getLatitude(),
-                businessProfile.getLongitude()
+                businessProfile.getLongitude(),
+                listing.getCategory()
         );
     }
 }

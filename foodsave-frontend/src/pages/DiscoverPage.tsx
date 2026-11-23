@@ -1,4 +1,4 @@
-import { ArrowRight, LocateFixed, MapPin, RefreshCw, ShoppingBag, Leaf, Clock3, Sparkles, SlidersHorizontal } from "lucide-react";
+import { ArrowRight, LocateFixed, MapPin, RefreshCw, ShoppingBag, Leaf, Clock3, Sparkles, SlidersHorizontal, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { City, Listing } from "../types";
 import { backendRecommendationScore, recommendationReason, sortListings } from "../recommendations";
@@ -22,9 +22,14 @@ type Props = {
 
 export function DiscoverPage({city,listings,hiddenUnknown,nearby,coords,locating,onLocate,onShowAll,onOpen,onOrders}:Props) {
   const [sort, setSort] = useState<ListingSort>("recommended");
+  const [query, setQuery] = useState("");
   const location = nearby ? coords : null;
   const effectiveSort = sort === "distance" && !location ? "recommended" : sort;
-  const sorted = useMemo(() => sortListings(listings, effectiveSort, location), [listings, effectiveSort, location]);
+  const sorted = useMemo(() => {
+    const normalized = query.trim().toLocaleLowerCase("ru-RU");
+    const filtered = normalized ? listings.filter(item => [item.title, item.description, item.businessName].some(text => (text || "").toLocaleLowerCase("ru-RU").includes(normalized))) : listings;
+    return sortListings(filtered, effectiveSort, location);
+  }, [listings, effectiveSort, location, query]);
   const serverRated = listings.filter(item => backendRecommendationScore(item) !== null).length;
   const scoreSource = !listings.length ? "" : serverRated === listings.length
     ? "Рейтинг рассчитан на сервере"
@@ -41,19 +46,20 @@ export function DiscoverPage({city,listings,hiddenUnknown,nearby,coords,locating
           <button className="ghost-btn" onClick={onLocate} disabled={locating}><LocateFixed size={17}/>{locating?"Определяем адрес…":"Рядом со мной"}</button>
         </div>
       </div>
-      <div className="hero-art"><div className="hero-orb"/><div className="hero-food">🥑</div><div className="floating f1"><Leaf size={16}/><b>−90%</b><small>до 90% дешевле</small></div><div className="floating f2"><MapPin size={16}/><b>{cityName(city)}</b><small>только твой город</small></div></div>
+      <div className="hero-art"><div className="hero-orb"/><div className="hero-food"><span>🥐</span></div><div className="floating f1"><Leaf size={16}/><b>−90%</b><small>выгодные предложения</small></div><div className="floating f2"><MapPin size={16}/><b>{cityName(city)}</b><small>только твой город</small></div></div>
     </section>
     <section className="impact-strip"><div className="container stat-grid discover-stats"><div className="stat"><b>{listings.length}</b><span>доступных предложений</span></div><div className="stat"><b>{cityName(city)}</b><span>выбранный город</span></div><div className="stat"><b>QR</b><span>подтверждение получения</span></div><div className="stat"><b>FoodPoints</b><span>баллы за спасённую еду</span></div></div></section>
     <section id="offers" className="section container page-offers">
       <div className="heading"><div><span className="kicker">{nearby?"В радиусе 10 км":cityName(city)}</span><h2>Спасти сегодня</h2></div><div className="heading-actions"><button className="ghost-btn small" onClick={nearby?onShowAll:onLocate}><MapPin size={15}/>{nearby?"Весь мой город":"Показать рядом"}</button><button className="ghost-btn small" onClick={onOrders}><ShoppingBag size={15}/> Мои заказы</button></div></div>
       <div className="city-notice"><MapPin size={17}/><span>Отбираем объявления для города <b>{cityName(city)}</b> из твоего профиля. Предложения с неизвестным или противоречивым адресом скрываются.</span></div>
       {hiddenUnknown > 0 && <div className="data-notice"><RefreshCw size={16}/><span>{hiddenUnknown} предложений скрыто: backend не вернул город или пригодные координаты. Чтобы не показывать чужой город, мы не угадываем расположение.</span></div>}
+      <div className="catalog-search-row"><label className="catalog-search" htmlFor="listing-search"><Search size={19}/><input id="listing-search" type="search" placeholder="Найти еду, кафе или пекарню…" value={query} onChange={event=>setQuery(event.target.value)} autoComplete="off"/>{query&&<button type="button" className="search-clear" onClick={()=>setQuery("")} aria-label="Очистить поиск"><X size={17}/></button>}</label><span className="catalog-results">{sorted.length} {sorted.length===1?"предложение":"предложений"}</span></div>
       <div className="recommendation-toolbar" aria-label="Сортировка предложений">
         <div className="recommendation-intro"><span className="recommendation-icon"><Sparkles size={19}/></span><div><b>Подбор для тебя</b><small>{location?"Учитываем скидку, рейтинг, количество и расстояние":"Учитываем скидку, рейтинг и наличие. Расстояние — после включения геолокации."}</small>{scoreSource&&<small className="score-source">{scoreSource}</small>}</div></div>
         <label className="recommendation-select"><SlidersHorizontal size={16}/><span>Сортировка</span><select value={effectiveSort} onChange={event => setSort(event.target.value as ListingSort)}><option value="recommended">Рекомендуем</option><option value="discount">Максимальная скидка</option><option value="price">Дешевле</option>{location && <option value="distance">Ближе ко мне</option>}</select></label>
       </div>
       {nearby&&coords&&<MapView user={coords} listings={sorted} recommended={effectiveSort==="recommended"}/>}
-      {sorted.length>0?<div className="listing-grid">{sorted.map((listing,index)=><ListingCard key={listing.id} listing={listing} recommendationReason={effectiveSort==="recommended"&&index<3?recommendationReason(listing,location):undefined} onOpen={()=>onOpen(listing)}/>)}</div>:<div className="empty-page"><Empty/><p>Попробуй выбрать поиск рядом или зайди чуть позже.</p></div>}
+      {sorted.length>0?<div className="listing-grid">{sorted.map((listing,index)=><ListingCard key={listing.id} listing={listing} recommendationReason={effectiveSort==="recommended"&&index<3?recommendationReason(listing,location):undefined} onOpen={()=>onOpen(listing)}/>)}</div>:<div className="empty-page"><Empty/><p>{query ? "По этому запросу ничего не найдено. Попробуй другое название." : "Пока предложений нет. Попробуй выбрать поиск рядом или зайди чуть позже."}</p>{query&&<button className="ghost-btn" onClick={()=>setQuery("")}>Сбросить поиск</button>}</div>}
       <div className="help-strip"><Clock3 size={19}/><div><b>Как работает FoodSave?</b><span>Выбери продукт → забронируй → оплати тестовым платежом → покажи QR бизнесу при получении.</span></div></div>
     </section>
   </>;

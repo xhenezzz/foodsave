@@ -1,6 +1,4 @@
 package com.example.FoodSave.business.entity;
-
-import com.example.FoodSave.auth.entity.City;
 import com.example.FoodSave.auth.entity.User;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;

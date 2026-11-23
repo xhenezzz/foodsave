@@ -5,14 +5,21 @@ import type {
   FoodSaveQrResponse,
   Impact,
   Listing,
+  Loyalty,
+  BusinessDashboard,
+  AiListingSuggestion,
+  AiListingDraft,
+  FoodCategory,
+  ListingImage,
   Order,
   OrderQr,
   Payment,
+  StripeCheckoutSession,
   Profile,
   Review
 } from "./types";
 
-const API_URL = "http://localhost:8081/api";
+const API_URL = (import.meta.env?.VITE_API_URL || "http://localhost:8081/api").replace(/\/$/, "");
 
 function token(): string | null {
   return localStorage.getItem("foodsave_token");
@@ -66,7 +73,8 @@ async function request<T>(
     return undefined as T;
   }
 
-  return JSON.parse(text) as T;
+  try { return JSON.parse(text) as T; }
+  catch { return text as T; }
 }
 
 
@@ -75,6 +83,34 @@ async function request<T>(
    ========================================================= */
 
 export const api = {
+  getListingImages: (id:string) => request<ListingImage[]>(`/listings/${id}/images`),
+  uploadListingImage: (id:string, file:File) => {
+    const data=new FormData(); data.append("file",file);
+    return request<ListingImage>(`/listings/${id}/images`,{method:"POST",body:data});
+  },
+  deleteListingImage: (id:string, imageId:string) => request<void>(`/listings/${id}/images/${imageId}`,{method:"DELETE"}),
+  getListingImageBlob: async (id:string, imageId:string): Promise<Blob> => {
+    const jwt=token();
+    const response=await fetch(`${API_URL}/listings/${id}/images/${imageId}/content`,{
+      headers:jwt?{Authorization:`Bearer ${jwt}`}:{},
+    });
+    if(!response.ok) throw new Error(`Не удалось загрузить фото: HTTP ${response.status}`);
+    return response.blob();
+  },
+
+  suggestAiListing: (data: {productName:string; details:string; language:"ru"|"kk"|"en"}) =>
+    request<AiListingSuggestion>("/business/ai-listing/suggest", {
+      method: "POST", body: JSON.stringify(data)
+    }),
+
+  analyzeAiListing: (image:File, language:"ru"|"kk"|"en", notes:string) => {
+    const data = new FormData();
+    data.append("image", image);
+    data.append("language", language);
+    if (notes.trim()) data.append("notes", notes.trim());
+    return request<AiListingDraft>("/business/ai-listing/analyze", {method:"POST", body:data});
+  },
+
 
   register: (data: {
     username: string;
@@ -84,7 +120,7 @@ export const api = {
     city: City;
     role: "CUSTOMER" | "BUSINESS";
   }) =>
-    request<AuthResponse>("/auth/register", {
+    request<{token?:string;message?:string}>("/auth/register", {
       method: "POST",
       body: JSON.stringify(data)
     }),
@@ -99,12 +135,27 @@ export const api = {
     }),
 
 
+  verifyEmail: (rawToken: string) =>
+    request<AuthResponse>(`/auth/verify-email?token=${encodeURIComponent(rawToken)}`, {method: "POST"}),
+
+  resendVerification: (email: string) =>
+    request<void>("/auth/resend-verification", {
+      method: "POST",
+      body: JSON.stringify({email})
+    }),
+
   /* =========================================================
      PROFILE
      ========================================================= */
 
   getProfile: () =>
     request<Profile>("/profile/me"),
+
+  getBusinessStatistics: (days: 7 | 30 | 90 = 30) =>
+    request<BusinessDashboard>(`/business/statistics?days=${days}`),
+
+  getLoyalty: () =>
+    request<Loyalty>("/loyalty/me"),
 
 
   getQr: () =>
@@ -168,7 +219,9 @@ export const api = {
     pickupStart: string;
     pickupEnd: string;
     expiresAt: string;
+    productExpiresAt: string;
     weightKg: number;
+    category: FoodCategory;
   }) =>
     request<Listing>("/listings", {
       method: "POST",
@@ -179,6 +232,7 @@ export const api = {
   updateListing: (
     id: string,
     data: {
+      version: number;
       title: string;
       description: string;
       originalPrice: number;
@@ -187,7 +241,9 @@ export const api = {
       pickupStart: string;
       pickupEnd: string;
       expiresAt: string;
+    productExpiresAt: string;
       weightKg: number;
+      category: FoodCategory;
     }
   ) =>
     request<Listing>(`/listings/${id}`, {
@@ -214,6 +270,8 @@ export const api = {
     businessName: string;
     description: string;
     address: string;
+    latitude: number;
+    longitude: number;
   }) =>
     request<BusinessProfile>("/business/profile", {
       method: "POST",
@@ -225,6 +283,8 @@ export const api = {
     businessName: string;
     description: string;
     address: string;
+    latitude: number;
+    longitude: number;
   }) =>
     request<BusinessProfile>("/business/profile", {
       method: "PUT",
@@ -280,10 +340,18 @@ export const api = {
      PAYMENT
      ========================================================= */
 
-  payForOrder: (orderId: string) =>
-    request<Payment>(`/payments/${orderId}`, {
-      method: "POST"
+  // Legacy demo endpoints are retained for compatibility with existing local tests/data.
+  // The customer-facing app now uses Stripe Embedded Checkout below.
+  startDemoPayment: (orderId: string) =>
+    request<Payment>(`/payments/${orderId}/demo/start`, {method:"POST"}),
+  confirmDemoPayment: (orderId: string, decision: "APPROVE" | "DECLINE") =>
+    request<Payment>(`/payments/${orderId}/demo/confirm`, {
+      method:"POST", body:JSON.stringify({decision})
     }),
+  startStripeCheckout: (orderId: string) =>
+    request<StripeCheckoutSession>(`/payments/${orderId}/stripe/checkout-session`, {method:"POST"}),
+  getPaymentStatus: (orderId: string) =>
+    request<Payment>(`/payments/${orderId}`),
 
 
   /* =========================================================
@@ -291,7 +359,7 @@ export const api = {
      ========================================================= */
 
   getImpact: () =>
-    request<Impact>("/impact/my"),
+    request<Impact>("/impact/me"),
 
 
   /* =========================================================

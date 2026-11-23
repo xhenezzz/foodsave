@@ -22,11 +22,19 @@ public class FoodListing {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
     @Column(nullable = false)
     private String title;
 
     @Column(length = 1000)
     private String description;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 32)
+    private FoodCategory category;
 
     @Column(nullable = false)
     private BigDecimal originalPrice;
@@ -45,6 +53,10 @@ public class FoodListing {
 
     @Column(nullable = false)
     private LocalDateTime expiresAt;
+
+    // The actual food safety expiration time; NULL on legacy unverified rows.
+    @Column(name = "product_expires_at")
+    private LocalDateTime productExpiresAt;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

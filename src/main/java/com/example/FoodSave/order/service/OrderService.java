@@ -7,6 +7,7 @@ import com.example.FoodSave.auth.repo.UserRepository;
 import com.example.FoodSave.foodlisting.entity.FoodListing;
 import com.example.FoodSave.foodlisting.entity.ListingStatus;
 import com.example.FoodSave.foodlisting.repo.FoodListingRepository;
+import com.example.FoodSave.foodlisting.service.ListingRules;
 import com.example.FoodSave.order.dto.CreateOrderRequest;
 import com.example.FoodSave.order.dto.OrderQrResponse;
 import com.example.FoodSave.order.dto.OrderResponse;
@@ -14,10 +15,13 @@ import com.example.FoodSave.order.entity.Order;
 import com.example.FoodSave.order.entity.OrderStatus;
 import com.example.FoodSave.order.repository.OrderRepository;
 import com.example.FoodSave.payment.repo.PaymentRepository;
-import com.example.FoodSave.loyalty.service.LoyaltyService;
+import com.example.FoodSave.payment.entity.PaymentStatus;
+import com.example.FoodSave.loyalty.LoyaltyService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
@@ -38,123 +42,62 @@ public class OrderService {
     private final LoyaltyService loyaltyService;
 
     @Transactional
-    public OrderResponse createOrder(
-            CreateOrderRequest request
-    ) {
-
-        UserPrincipal userPrincipal =
-                (UserPrincipal) SecurityContextHolder
-                        .getContext()
-                        .getAuthentication()
-                        .getPrincipal();
-
-        User user =
-                userRepository.findById(userPrincipal.getId())
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Пользователь не найден"
-                                )
-                        );
-
-        FoodListing listing =
-                foodListingRepository.findById(
-                        request.getListingId()
-                ).orElseThrow(() ->
-                        new RuntimeException(
-                                "Предложение не найдено"
-                        )
-                );
-
-        // Проверяем статус объявления
-        if (listing.getStatus() != ListingStatus.ACTIVE) {
-            throw new RuntimeException(
-                    "Это предложение больше недоступно"
-            );
+    public OrderResponse createOrder(CreateOrderRequest request) {
+        UserPrincipal principal = currentUser();
+        if (principal.getRole() != Role.CUSTOMER) {
+            throw new IllegalStateException("Только покупатель может создавать заказы");
+        }
+        User user = userRepository.findByIdForUpdate(principal.getId())
+                .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+        if (!loyaltyService.canCreateOrder(user)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Бронирования временно ограничены до " + user.getBookingBlockedUntil());
         }
 
-        // Проверяем количество
-        if (request.getQuantity() == null
-                || request.getQuantity() <= 0) {
-
-            throw new RuntimeException(
-                    "Количество должно быть больше 0"
-            );
+        if (request.getQuantity() == null || request.getQuantity() <= 0) {
+            throw new IllegalArgumentException("Количество должно быть больше 0");
         }
 
-        // Проверяем наличие товара
-        if (listing.getQuantity()
-                < request.getQuantity()) {
+        // Блокировка предотвращает двойное бронирование последних единиц товара.
+        FoodListing listing = foodListingRepository.findByIdForUpdate(request.getListingId())
+                .orElseThrow(() -> new RuntimeException("Предложение не найдено"));
+        LocalDateTime now = almatyNow();
 
-            throw new RuntimeException(
-                    "Недостаточно товара"
-            );
+        if (listing.getStatus() != ListingStatus.ACTIVE
+                || listing.getQuantity() < request.getQuantity()
+                || !listing.getExpiresAt().isAfter(now)
+                || !listing.getPickupEnd().isAfter(now)
+                || !ListingRules.safeForPickup(listing.getProductExpiresAt(), now)
+                || !listing.getProductExpiresAt().isAfter(listing.getPickupEnd().plusMinutes(15))) {
+            throw new IllegalStateException("Предложение недоступно или недостаточно товара");
         }
-
-        // Рассчитываем стоимость
-        BigDecimal totalPrice =
-                listing.getFoodSavePrice()
-                        .multiply(
-                                BigDecimal.valueOf(
-                                        request.getQuantity()
-                                )
-                        );
-
-        LocalDateTime now =
-                LocalDateTime.now(
-                        ZoneId.of("Asia/Almaty")
-                );
 
         Order order = new Order();
-
         order.setUser(user);
         order.setListing(listing);
         order.setQuantity(request.getQuantity());
-        order.setTotalPrice(totalPrice);
-
-        order.setStatus(
-                OrderStatus.RESERVED
-        );
-
+        order.setTotalPrice(listing.getFoodSavePrice()
+                .multiply(BigDecimal.valueOf(request.getQuantity())));
+        order.setOriginalUnitPriceAtOrder(listing.getOriginalPrice());
+        order.setWeightKgPerUnitAtOrder(listing.getWeightKg());
+        order.setStatus(OrderStatus.RESERVED);
         order.setCreatedAt(now);
+        // Дедлайн на оплату не должен быть позже окончания выдачи.
+        LocalDateTime paymentDeadline = now.plusMinutes(15);
+        order.setExpiresAt(paymentDeadline.isBefore(listing.getPickupEnd())
+                ? paymentDeadline : listing.getPickupEnd());
+        order.setPickupStart(listing.getPickupStart());
+        order.setPickupEnd(listing.getPickupEnd());
+        order.setQrToken(UUID.randomUUID().toString());
 
-        // Бронь действует 15 минут
-        order.setExpiresAt(
-                now.plusMinutes(15)
-        );
-
-        order.setPickupStart(
-                listing.getPickupStart()
-        );
-
-        order.setPickupEnd(
-                listing.getPickupEnd()
-        );
-
-        // Уникальный QR token
-        order.setQrToken(
-                UUID.randomUUID().toString()
-        );
-
-        // Уменьшаем количество товара
-        listing.setQuantity(
-                listing.getQuantity()
-                        - request.getQuantity()
-        );
-
-        // Если товар закончился
+        listing.setQuantity(listing.getQuantity() - request.getQuantity());
         if (listing.getQuantity() == 0) {
-
-            listing.setStatus(
-                    ListingStatus.SOLD_OUT
-            );
+            listing.setStatus(ListingStatus.SOLD_OUT);
         }
-
         foodListingRepository.save(listing);
-
-        Order savedOrder =
-                orderRepository.save(order);
-
-        return toResponse(savedOrder);
+        loyaltyService.orderCreated(user);
+        userRepository.save(user);
+        return toResponse(orderRepository.save(order));
     }
 
     public List<OrderResponse> getMyOrders() {
@@ -208,305 +151,153 @@ public class OrderService {
     }
 
     @Transactional
-    public void cancelOrder(
-            UUID id
-    ) {
-
-        UserPrincipal userPrincipal =
-                (UserPrincipal) SecurityContextHolder
-                        .getContext()
-                        .getAuthentication()
-                        .getPrincipal();
-
-        Order order =
-                orderRepository.findById(id)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Заказ не найден"
-                                )
-                        );
-
-        // Проверяем владельца
-        if (!order.getUser()
-                .getId()
-                .equals(userPrincipal.getId())) {
-
-            throw new RuntimeException(
-                    "Вы не можете отменить чужой заказ"
-            );
+    public void cancelOrder(UUID id) {
+        UserPrincipal principal = currentUser();
+        Order order = orderRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new RuntimeException("Заказ не найден"));
+        if (!order.getUser().getId().equals(principal.getId())) {
+            throw new IllegalStateException("Вы не можете отменить чужой заказ");
         }
-
-        // Отменять можно только RESERVED
-        if (order.getStatus()
-                != OrderStatus.RESERVED) {
-
-            throw new RuntimeException(
-                    "Этот заказ уже нельзя отменить"
-            );
+        if (order.getStatus() != OrderStatus.RESERVED) {
+            throw new IllegalStateException("Этот заказ уже нельзя отменить");
         }
-
-        order.setStatus(
-                OrderStatus.CANCELLED
-        );
-
-        // Возвращаем товар
-        FoodListing listing =
-                order.getListing();
-
-        listing.setQuantity(
-                listing.getQuantity()
-                        + order.getQuantity()
-        );
-
-        // Если товар был SOLD_OUT,
-        // снова делаем ACTIVE
-        if (listing.getStatus()
-                == ListingStatus.SOLD_OUT) {
-
-            listing.setStatus(
-                    ListingStatus.ACTIVE
-            );
+        // Пока нет возвратов через Stripe, оплаченный заказ не отменяем.
+        if (hasSuccessfulPayment(id)) {
+            throw new IllegalStateException("Оплаченный заказ нельзя отменить без возврата денег");
         }
-
-        foodListingRepository.save(listing);
+        order.setStatus(OrderStatus.CANCELLED);
+        restoreStock(order, almatyNow());
         orderRepository.save(order);
     }
 
     @Transactional
     @Scheduled(fixedRate = 60000)
     public void expireOrders() {
-
-        List<Order> orders =
-                orderRepository
-                        .findByStatusAndExpiresAtBefore(
-                                OrderStatus.RESERVED,
-                                LocalDateTime.now()
-                        );
-
-        for (Order order : orders) {
-
-            order.setStatus(
-                    OrderStatus.EXPIRED
-            );
-
-            FoodListing listing =
-                    order.getListing();
-
-            // Возвращаем товар
-            listing.setQuantity(
-                    listing.getQuantity()
-                            + order.getQuantity()
-            );
-
-            // Если товар закончился из-за брони,
-            // возвращаем объявление в ACTIVE
-            if (listing.getStatus()
-                    == ListingStatus.SOLD_OUT) {
-
-                listing.setStatus(
-                        ListingStatus.ACTIVE
-                );
+        LocalDateTime now = almatyNow();
+        List<Order> candidates = orderRepository.findByStatusAndExpiresAtBefore(
+                OrderStatus.RESERVED, now);
+        for (Order candidate : candidates) {
+            // Повторно читаем под блокировкой: статус мог измениться после поиска.
+            Order order = orderRepository.findByIdForUpdate(candidate.getId())
+                    .orElse(null);
+            if (order == null || order.getStatus() != OrderStatus.RESERVED
+                    || order.getExpiresAt().isAfter(now)
+                    || hasSuccessfulPayment(order.getId())) {
+                continue;
             }
-
-            foodListingRepository.save(listing);
+            order.setStatus(OrderStatus.EXPIRED);
+            restoreStock(order, now);
+            orderRepository.save(order);
         }
-
-        orderRepository.saveAll(orders);
     }
 
-    public OrderQrResponse getOrderQr(
-            UUID id
-    ) {
-
-        UserPrincipal userPrincipal =
-                (UserPrincipal) SecurityContextHolder
-                        .getContext()
-                        .getAuthentication()
-                        .getPrincipal();
-
-        Order order =
-                orderRepository.findById(id)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Заказ не найден"
-                                )
-                        );
-
-        // QR может получить только владелец заказа
-        if (!order.getUser()
-                .getId()
-                .equals(userPrincipal.getId())) {
-
-            throw new RuntimeException(
-                    "Вы не можете получить QR чужого заказа"
-            );
+    public OrderQrResponse getOrderQr(UUID id) {
+        UserPrincipal principal = currentUser();
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Заказ не найден"));
+        if (!order.getUser().getId().equals(principal.getId())) {
+            throw new IllegalStateException("Вы не можете получить QR чужого заказа");
         }
-
-        // QR только для активного заказа
-        if (order.getStatus()
-                != OrderStatus.RESERVED) {
-
-            throw new RuntimeException(
-                    "QR доступен только для активного заказа"
-            );
+        if (order.getStatus() != OrderStatus.RESERVED) {
+            throw new IllegalStateException("QR доступен только для активного заказа");
         }
-
-        // Проверяем оплату
-        if (!paymentRepository
-                .existsByOrderId(id)) {
-
-            throw new RuntimeException(
-                    "Сначала оплатите заказ"
-            );
+        if (!hasSuccessfulPayment(id)) {
+            throw new IllegalStateException("Сначала оплатите заказ");
         }
-
-        String qrData =
-                "foodsave://order/"
-                        + order.getQrToken();
-
-        return new OrderQrResponse(
-                qrData
-        );
+        LocalDateTime now = almatyNow();
+        if (now.isAfter(order.getPickupEnd().plusMinutes(15))
+                || !order.getListing().getExpiresAt().isAfter(now)
+                || !ListingRules.safeForPickup(order.getListing().getProductExpiresAt(), now)) {
+            throw new IllegalStateException("Время получения истекло или продукт больше не годен");
+        }
+        return new OrderQrResponse("foodsave://order/" + order.getQrToken());
     }
 
     @Transactional
-    public OrderResponse completeOrderByQr(
-            String qrToken
-    ) {
-
-        UserPrincipal userPrincipal =
-                (UserPrincipal) SecurityContextHolder
-                        .getContext()
-                        .getAuthentication()
-                        .getPrincipal();
-
-        Order order =
-                orderRepository
-                        .findByQrToken(qrToken)
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "QR-код недействителен"
-                                )
-                        );
-
-        // Заказ должен быть RESERVED
-        if (order.getStatus()
-                != OrderStatus.RESERVED) {
-
-            throw new RuntimeException(
-                    "Этот заказ уже нельзя завершить"
-            );
+    public OrderResponse completeOrderByQr(String qrToken) {
+        UserPrincipal principal = currentUser();
+        if (principal.getRole() != Role.BUSINESS) {
+            throw new IllegalStateException("Только бизнес может подтвердить заказ");
         }
-
-        // Только BUSINESS
-        if (userPrincipal.getRole()
-                != Role.BUSINESS) {
-
-            throw new RuntimeException(
-                    "Только бизнес может подтвердить заказ"
-            );
+        // Два сканирования не могут дважды начислить FoodPoints.
+        Order order = orderRepository.findByQrTokenForUpdate(qrToken)
+                .orElseThrow(() -> new RuntimeException("QR-код недействителен"));
+        if (order.getStatus() != OrderStatus.RESERVED) {
+            throw new IllegalStateException("Этот заказ уже нельзя завершить");
         }
-
-        FoodListing listing =
-                order.getListing();
-
-        if (!listing.getBusiness()
-                .getUser()
-                .getId()
-                .equals(userPrincipal.getId())) {
-
-            throw new RuntimeException(
-                    "Вы не можете подтвердить заказ другого бизнеса"
-            );
+        if (!order.getListing().getBusiness().getUser().getId().equals(principal.getId())) {
+            throw new IllegalStateException("Вы не можете подтвердить заказ другого бизнеса");
         }
-
-        // Проверяем время получения
-        LocalDateTime now =
-                LocalDateTime.now(
-                        ZoneId.of("Asia/Almaty")
-                );
-
-        if (now.isBefore(
-                order.getPickupStart()
-        )) {
-
-            throw new RuntimeException(
-                    "Время получения заказа ещё не наступило"
-            );
+        if (!hasSuccessfulPayment(order.getId())) {
+            throw new IllegalStateException("Заказ не оплачен");
         }
-
-        // Даём 15 минут после pickupEnd
-        if (now.isAfter(
-                order.getPickupEnd()
-                        .plusMinutes(15)
-        )) {
-
-            throw new RuntimeException(
-                    "Время получения заказа истекло"
-            );
+        LocalDateTime now = almatyNow();
+        if (now.isBefore(order.getPickupStart())
+                || now.isAfter(order.getPickupEnd().plusMinutes(15))
+                || !order.getListing().getExpiresAt().isAfter(now)
+                || !ListingRules.safeForPickup(order.getListing().getProductExpiresAt(), now)) {
+            throw new IllegalStateException("Выдача запрещена: время получения или срок годности истёк");
         }
-
-        // Завершаем заказ
-        order.setStatus(
-                OrderStatus.COMPLETED
-        );
-
-        // Начисляем FoodPoints
-        loyaltyService.orderCompleted(
-                order.getUser()
-        );
-
-        userRepository.save(
-                order.getUser()
-        );
-
-        Order savedOrder =
-                orderRepository.save(order);
-
-        return toResponse(savedOrder);
+        // Один пользователь может завершать разные заказы параллельно: блокируем его счётчики.
+        User customer = userRepository.findByIdForUpdate(order.getUser().getId())
+                .orElseThrow(() -> new IllegalStateException("Пользователь не найден"));
+        order.setStatus(OrderStatus.COMPLETED);
+        loyaltyService.orderCompleted(customer);
+        userRepository.save(customer);
+        return toResponse(orderRepository.save(order));
     }
 
     @Transactional
     @Scheduled(fixedRate = 60000)
     public void markNoShowOrders() {
-
-        LocalDateTime deadline =
-                LocalDateTime.now()
-                        .minusMinutes(15);
-
-        List<Order> orders =
-                orderRepository
-                        .findByStatusAndPickupEndBefore(
-                                OrderStatus.RESERVED,
-                                deadline
-                        );
-
-        for (Order order : orders) {
-
-            // Если заказ не оплачен,
-            // не считаем его NO_SHOW
-            if (!paymentRepository
-                    .existsByOrderId(
-                            order.getId()
-                    )) {
-
+        LocalDateTime deadline = almatyNow().minusMinutes(15);
+        List<Order> candidates = orderRepository.findByStatusAndPickupEndBefore(
+                OrderStatus.RESERVED, deadline);
+        for (Order candidate : candidates) {
+            Order order = orderRepository.findByIdForUpdate(candidate.getId())
+                    .orElse(null);
+            if (order == null || order.getStatus() != OrderStatus.RESERVED
+                    || !order.getPickupEnd().isBefore(deadline)
+                    || !hasSuccessfulPayment(order.getId())) {
                 continue;
             }
-
-            order.setStatus(
-                    OrderStatus.NO_SHOW
-            );
-
-            loyaltyService.orderNoShow(
-                    order.getUser()
-            );
-
-            userRepository.save(
-                    order.getUser()
-            );
+            // Блокировка защищает FoodPoints и noShowCount от потерянных обновлений.
+            User customer = userRepository.findByIdForUpdate(order.getUser().getId())
+                    .orElseThrow(() -> new IllegalStateException("Пользователь не найден"));
+            order.setStatus(OrderStatus.NO_SHOW);
+            loyaltyService.orderNoShow(customer);
+            userRepository.save(customer);
+            orderRepository.save(order);
         }
+    }
 
-        orderRepository.saveAll(orders);
+    private boolean hasSuccessfulPayment(UUID orderId) {
+        return paymentRepository.existsByOrderIdAndStatus(orderId, PaymentStatus.SUCCESS);
+    }
+
+    private void restoreStock(Order order, LocalDateTime now) {
+        // Блокируем объявление, чтобы конкурирующие отмены не теряли количество.
+        FoodListing listing = foodListingRepository.findByIdForUpdate(order.getListing().getId())
+                .orElseThrow(() -> new RuntimeException("Предложение не найдено"));
+        listing.setQuantity(listing.getQuantity() + order.getQuantity());
+        if (listing.getStatus() == ListingStatus.SOLD_OUT) {
+            if (listing.getExpiresAt().isAfter(now) && listing.getPickupEnd().isAfter(now)
+                    && ListingRules.safeForPickup(listing.getProductExpiresAt(), now)) {
+                listing.setStatus(ListingStatus.ACTIVE);
+            } else {
+                listing.setStatus(ListingStatus.EXPIRED);
+            }
+        }
+        foodListingRepository.save(listing);
+    }
+
+    private UserPrincipal currentUser() {
+        return (UserPrincipal) SecurityContextHolder.getContext()
+                .getAuthentication().getPrincipal();
+    }
+
+    private LocalDateTime almatyNow() {
+        return LocalDateTime.now(ZoneId.of("Asia/Almaty"));
     }
 
     private OrderResponse toResponse(
@@ -515,6 +306,9 @@ public class OrderService {
 
         FoodListing listing =
                 order.getListing();
+
+        PaymentStatus paymentStatus = paymentRepository.findByOrderId(order.getId())
+                .map(com.example.FoodSave.payment.entity.Payment::getStatus).orElse(null);
 
         return new OrderResponse(
                 order.getId(),
@@ -527,7 +321,9 @@ public class OrderService {
                 order.getCreatedAt(),
                 order.getExpiresAt(),
                 order.getPickupStart(),
-                order.getPickupEnd()
+                order.getPickupEnd(),
+                paymentStatus == PaymentStatus.SUCCESS,
+                paymentStatus
         );
     }
 }

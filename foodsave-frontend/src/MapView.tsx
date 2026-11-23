@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import type { Listing } from "./types";
 
 let leafletPromise: Promise<any> | null = null;
-function loadLeaflet() {
+export function loadLeaflet() {
   if ((window as any).L) return Promise.resolve((window as any).L);
   if (leafletPromise) return leafletPromise;
   leafletPromise = new Promise((resolve, reject) => {

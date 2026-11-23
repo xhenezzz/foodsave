@@ -1,14 +1,13 @@
 package com.example.FoodSave.impact.service;
 
 import com.example.FoodSave.auth.cfg.UserPrincipal;
-import com.example.FoodSave.auth.entity.User;
-import com.example.FoodSave.auth.repo.UserRepository;
 import com.example.FoodSave.impact.dto.ImpactResponse;
 import com.example.FoodSave.order.entity.Order;
 import com.example.FoodSave.order.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -23,58 +22,35 @@ public class ImpactService {
     private static final BigDecimal CO2_PER_KG_FOOD =
             BigDecimal.valueOf(2.5);
 
+    @Transactional(readOnly = true)
     public ImpactResponse getMyImpact() {
-
-        UserPrincipal userPrincipal =
-                (UserPrincipal) SecurityContextHolder
-                        .getContext()
-                        .getAuthentication()
-                        .getPrincipal();
-
-        List<Order> completedOrders =
-                orderRepository.findCompletedOrdersByUserId(
-                        userPrincipal.getId()
-                );
+        UserPrincipal principal = (UserPrincipal) SecurityContextHolder.getContext()
+                .getAuthentication().getPrincipal();
+        List<Order> completed = orderRepository.findCompletedOrdersByUserId(principal.getId());
 
         BigDecimal foodSavedKg = BigDecimal.ZERO;
         BigDecimal moneySaved = BigDecimal.ZERO;
 
-        for (Order order : completedOrders) {
-
-            int quantity = order.getQuantity();
-
-            BigDecimal weight =
-                    order.getListing().getWeightKg();
-
+        for (Order order : completed) {
+            // Require backfill of pre-existing orders before enabling strict snapshots.
+            if (order.getWeightKgPerUnitAtOrder() == null
+                    || order.getOriginalUnitPriceAtOrder() == null) {
+                throw new IllegalStateException(
+                        "Старый заказ не содержит исторической цены/веса. Выполните миграцию orders.");
+            }
+            BigDecimal quantity = BigDecimal.valueOf(order.getQuantity());
             foodSavedKg = foodSavedKg.add(
-                    weight.multiply(
-                            BigDecimal.valueOf(quantity)
-                    )
-            );
-
-            BigDecimal originalPrice =
-                    order.getListing().getOriginalPrice();
-
-            BigDecimal foodSavePrice =
-                    order.getListing().getFoodSavePrice();
-
-            BigDecimal savedPerItem =
-                    originalPrice.subtract(foodSavePrice);
-
+                    order.getWeightKgPerUnitAtOrder().multiply(quantity));
             moneySaved = moneySaved.add(
-                    savedPerItem.multiply(
-                            BigDecimal.valueOf(quantity)
-                    )
-            );
+                    order.getOriginalUnitPriceAtOrder().multiply(quantity)
+                            .subtract(order.getTotalPrice()));
         }
-
-        BigDecimal co2SavedKg =
-                foodSavedKg.multiply(CO2_PER_KG_FOOD);
 
         return new ImpactResponse(
                 foodSavedKg.setScale(2, RoundingMode.HALF_UP),
                 moneySaved.setScale(2, RoundingMode.HALF_UP),
-                co2SavedKg.setScale(2, RoundingMode.HALF_UP)
+                foodSavedKg.multiply(CO2_PER_KG_FOOD)
+                        .setScale(2, RoundingMode.HALF_UP)
         );
     }
 }

@@ -31,9 +31,9 @@ export function OrdersPage({profile,orders,paidIds,payingId,onPay,onQr,onReview,
         <div className="order-card-center"><div className="order-card-top"><h3>{o.listingTitle}</h3><span className={`status status-${o.status.toLowerCase()}`}>{statusText[o.status]??o.status}</span></div>
           <p>№ {o.id.slice(0,8)} · {o.quantity} шт. · {dt(o.createdAt)}</p>
           <div className="order-card-pickup"><Clock3 size={14}/> Получение: {dt(o.pickupStart)} — {time(o.pickupEnd)}</div>
-          {reserved&&<div className={paid?"payment-label paid":"payment-label unpaid"}>{paid?<><CheckCircle2 size={15}/> Оплачено</>:<><CreditCard size={15}/> Ожидает оплаты</>}</div>}
+          {reserved&&<div className={paid?"payment-label paid":"payment-label unpaid"}>{paid?<><CheckCircle2 size={15}/> Оплачено (демо)</>:<><CreditCard size={15}/> Ожидает оплаты</>}</div>}
           <div className="order-card-buttons">
-            {reserved&&!paid&&<button className="primary-btn small-action" disabled={payingId===o.id} onClick={()=>onPay(o)}><CreditCard size={15}/>{payingId===o.id?"Обработка…":"Оплатить"}</button>}
+            {reserved&&!paid&&<button className="primary-btn small-action" disabled={payingId===o.id} onClick={()=>onPay(o)}><CreditCard size={15}/>{payingId===o.id?"Обработка…":"Демо-оплата"}</button>}
             {reserved&&paid&&<button className="primary-btn small-action" onClick={()=>onQr(o)}><QrCode size={15}/> Показать QR</button>}
             {reserved&&!paid&&<button className="ghost-btn small-action" onClick={()=>onCancel(o)}><XCircle size={15}/> Отменить</button>}
             {o.status==="COMPLETED"&&<button className="ghost-btn small-action" onClick={()=>onReview(o)}><Star size={15}/> Оставить отзыв</button>}

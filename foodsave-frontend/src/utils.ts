@@ -12,7 +12,6 @@ export function toLocal(date: Date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-// Только подтверждённый город из API или корректные координаты. Не угадываем по названию бизнеса.
 const centers: Record<City, [number, number]> = {
   ALMATY: [43.238949, 76.889709],
   ASTANA: [51.169392, 71.449074]
@@ -23,9 +22,7 @@ export function kilometers(lat1: number, lon1: number, lat2: number, lon2: numbe
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
   return 6371 * 2 * Math.asin(Math.sqrt(a));
 }
-/** Approximate city determination from coordinates as a temporary compatibility fallback.
- * The backend should return explicit city and enforce it in queries.
- */
+
 export function coordinatesCity(latitude: number, longitude: number): City | null {
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)
       || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
@@ -46,15 +43,13 @@ export function listingCity(listing: Listing): City | null {
   const hasCoordinates = typeof listing.latitude === "number" && typeof listing.longitude === "number"
     && Number.isFinite(listing.latitude) && Number.isFinite(listing.longitude);
   const fromCoords = hasCoordinates ? coordinatesCity(listing.latitude!, listing.longitude!) : null;
-  // В случае явного противоречия полей API не показываем объявление.
   if (known && hasCoordinates && known !== fromCoords) return null;
   return known ?? fromCoords;
 }
 
-/** Frontend safety filter. This is NOT a substitute for server-side city filtering. */
 export function listingsForCity(listings: Listing[], city: City): Listing[] {
   return listings.filter(listing => listingAvailable(listing) && listingCity(listing) === city);
 }
-export const listingAvailable = (listing: Listing) => listing.status === "ACTIVE" && listing.quantity > 0 && new Date(listing.expiresAt).getTime() > Date.now();
+export const listingAvailable = (listing: Listing) => listing.status === "ACTIVE" && listing.quantity > 0 && new Date(listing.expiresAt).getTime() > Date.now() && Boolean(listing.productExpiresAt) && new Date(listing.productExpiresAt!).getTime() > Date.now();
 export const confirmedPayment = (status?: string | null) => ["SUCCESS", "SUCCEEDED", "PAID", "COMPLETED", "CAPTURED"].includes(String(status ?? "").toUpperCase());
 export const orderPaidByServer = (order: Order) => order.paid === true || confirmedPayment(order.paymentStatus);

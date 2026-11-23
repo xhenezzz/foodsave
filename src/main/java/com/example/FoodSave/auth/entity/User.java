@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
@@ -40,6 +41,10 @@ public class User {
     private City city;
     @Enumerated(EnumType.STRING)
     private VerificationStatus verificationStatus;
+    @Column(nullable = false)
+    private boolean emailVerified ;
+    @Column(name = "booking_blocked_until")
+    private LocalDateTime bookingBlockedUntil;
     @Column(unique = true, nullable = false)
     private UUID fsId;
     private Integer foodPoints = 0;

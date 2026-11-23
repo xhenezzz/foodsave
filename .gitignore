@@ -31,3 +31,17 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# FoodSave security: never commit passwords, signing keys, uploads or IDE state
+.env
+.env.*
+!.env.example
+*.local.properties
+application-local.properties
+**/application-secret.properties
+**/uploads/
+foodsave-frontend.zip
+
+# Local run logs
+*_log.txt
+*_err.txt

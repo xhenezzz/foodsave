@@ -43,6 +43,12 @@ public class Order {
     @Column(nullable = false)
     private BigDecimal totalPrice;
 
+    @Column(name = "original_unit_price_at_order", precision = 15, scale = 2)
+    private BigDecimal originalUnitPriceAtOrder;
+
+    @Column(name = "weight_kg_per_unit_at_order", precision = 15, scale = 3)
+    private BigDecimal weightKgPerUnitAtOrder;
+
     @Column(nullable = false)
     private LocalDateTime createdAt;
 

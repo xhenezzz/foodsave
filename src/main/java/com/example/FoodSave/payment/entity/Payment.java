@@ -34,4 +34,13 @@ public class Payment {
 
     @Column(nullable = false)
     private LocalDateTime createdAt;
+
+    @Column(nullable = false, length = 3)
+    private String currency = "KZT";
+
+    @Column(name = "stripe_checkout_session_id", unique = true, length = 255)
+    private String stripeCheckoutSessionId;
+
+    @Column(name = "stripe_payment_intent_id", unique = true, length = 255)
+    private String stripePaymentIntentId;
 }

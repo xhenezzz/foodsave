@@ -4,7 +4,7 @@ import { listingCity, listingsForCity, coordinatesCity, listingAvailable, confir
 
 const listing = {
   id:'almaty-1',title:'Хлеб',description:'',originalPrice:2000,foodSavePrice:800,quantity:5,
-  pickupStart:'2099-01-01T11:00:00',pickupEnd:'2099-01-01T14:00:00',expiresAt:'2099-01-01T15:00:00',
+  pickupStart:'2099-01-01T11:00:00',pickupEnd:'2099-01-01T14:00:00',expiresAt:'2099-01-01T15:00:00',productExpiresAt:'2099-01-01T16:00:00',
   status:'ACTIVE',latitude:43.24,longitude:76.91
 };
 test('каталог Алматы распознаёт Алматы, но не Астану',()=>{
@@ -38,6 +38,8 @@ test('истёкшие/пустые/отменённые объявления н
   assert.equal(listingAvailable({...listing,quantity:0}),false);
   assert.equal(listingAvailable({...listing,status:'CANCELLED'}),false);
   assert.equal(listingAvailable({...listing,expiresAt:'2020-01-01T00:00:00'}),false);
+  assert.equal(listingAvailable({...listing,productExpiresAt:null}),false);
+  assert.equal(listingAvailable({...listing,productExpiresAt:'2020-01-01T00:00:00'}),false);
 });
 test('платёж подтверждается только успешным статусом',()=>{
   for(const status of ['SUCCESS','SUCCEEDED','PAID','COMPLETED','CAPTURED'])assert.equal(confirmedPayment(status),true);
