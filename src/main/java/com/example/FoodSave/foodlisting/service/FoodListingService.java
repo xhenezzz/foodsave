@@ -11,10 +11,13 @@ import com.example.FoodSave.foodlisting.entity.FoodListing;
 import com.example.FoodSave.foodlisting.entity.FoodCategory;
 import com.example.FoodSave.foodlisting.entity.ListingStatus;
 import com.example.FoodSave.foodlisting.repo.FoodListingRepository;
+import com.example.FoodSave.moderation.ModerationStatus;
 import com.example.FoodSave.review.repo.ReviewRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -30,21 +33,14 @@ public class FoodListingService {
     private final ReviewRepository reviewRepository;
     private final BusinessProfileRepository businessProfileRepository;
 
-    public FoodListingResponse createListing(
-            CreateFoodListingRequest request
-    ) {
-
+    public FoodListingResponse createListing(CreateFoodListingRequest request) {
         UserPrincipal userPrincipal = CurrentUser.get();
-
-        // Получаем BusinessProfile текущего пользователя
-        BusinessProfile businessProfile =
-                businessProfileRepository
-                        .findByUserId(userPrincipal.getId())
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Профиль бизнеса не найден"
-                                )
-                        );
+        BusinessProfile businessProfile = businessProfileRepository.findByUserId(userPrincipal.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Профиль бизнеса не найден"));
+        if (businessProfile.getStatus() != ModerationStatus.APPROVED) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Публиковать объявления можно после одобрения заявки бизнеса администратором");
+        }
 
         LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Almaty"));
         ListingRules.validate(
@@ -54,60 +50,34 @@ public class FoodListingService {
                 request.getPickupStart(), request.getPickupEnd(),
                 request.getExpiresAt(), request.getProductExpiresAt(),
                 now, false);
+        ListingRules.validateNutrition(request.getCalories(), request.getProteins(), request.getFats(), request.getCarbs());
         if (request.getQuantity() <= 0) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.BAD_REQUEST,
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Для нового предложения количество должно быть больше 0");
         }
 
         FoodListing listing = new FoodListing();
-
-        listing.setTitle(request.getTitle());
+        listing.setTitle(request.getTitle().trim());
         listing.setDescription(request.getDescription());
         listing.setCategory(request.getCategory() == null ? FoodCategory.OTHER : request.getCategory());
-
-        listing.setOriginalPrice(
-                request.getOriginalPrice()
-        );
-
-        listing.setFoodSavePrice(
-                request.getFoodSavePrice()
-        );
-
-        listing.setQuantity(
-                request.getQuantity()
-        );
-
-        listing.setWeightKg(
-                request.getWeightKg()
-        );
-
-        listing.setPickupStart(
-                request.getPickupStart()
-        );
-
-        listing.setPickupEnd(
-                request.getPickupEnd()
-        );
-
-        listing.setExpiresAt(
-                request.getExpiresAt()
-        );
+        listing.setOriginalPrice(request.getOriginalPrice());
+        listing.setFoodSavePrice(request.getFoodSavePrice());
+        listing.setQuantity(request.getQuantity());
+        listing.setWeightKg(request.getWeightKg());
+        listing.setPickupStart(request.getPickupStart());
+        listing.setPickupEnd(request.getPickupEnd());
+        listing.setExpiresAt(request.getExpiresAt());
         listing.setProductExpiresAt(request.getProductExpiresAt());
+        listing.setCalories(request.getCalories());
+        listing.setProteins(request.getProteins());
+        listing.setFats(request.getFats());
+        listing.setCarbs(request.getCarbs());
+        listing.setBusiness(businessProfile);
+        listing.setStatus(ListingStatus.ACTIVE);
+        // New offers are hidden from customers until an administrator approves them.
+        listing.setModerationStatus(ModerationStatus.PENDING);
 
-        // Теперь здесь BusinessProfile, а не User
-        listing.setBusiness(
-                businessProfile
-        );
-
-        listing.setStatus(
-                ListingStatus.ACTIVE
-        );
-
-        FoodListing savedListing =
-                foodListingRepository.save(listing);
-
-        return toResponse(savedListing);
+        return toResponse(foodListingRepository.save(listing));
     }
 
     /** Catalogue: /api/listings?city=ALMATY (city is optional). */
@@ -178,18 +148,18 @@ public class FoodListingService {
         FoodListing listing = foodListingRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new RuntimeException("Объявление не найдено"));
         if (!listing.getBusiness().getUser().getId().equals(userPrincipal.getId())) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.FORBIDDEN, "Чужое объявление");
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "Чужое объявление");
         }
         if (request.getVersion() == null || !request.getVersion().equals(listing.getVersion())) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.CONFLICT,
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
                     "Объявление изменилось. Обнови страницу и повтори редактирование");
         }
         if (listing.getStatus() == ListingStatus.CANCELED
                 || listing.getStatus() == ListingStatus.EXPIRED) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.CONFLICT, "Объявление уже закрыто");
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Объявление уже закрыто");
         }
 
         LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Almaty"));
@@ -201,6 +171,7 @@ public class FoodListingService {
                 request.getExpiresAt(), request.getProductExpiresAt(), now,
                 request.getPickupStart() != null
                         && request.getPickupStart().equals(listing.getPickupStart()));
+        ListingRules.validateNutrition(request.getCalories(), request.getProteins(), request.getFats(), request.getCarbs());
 
         listing.setTitle(request.getTitle().trim());
         listing.setDescription(request.getDescription());
@@ -213,6 +184,16 @@ public class FoodListingService {
         listing.setPickupEnd(request.getPickupEnd());
         listing.setExpiresAt(request.getExpiresAt());
         listing.setProductExpiresAt(request.getProductExpiresAt());
+        listing.setCalories(request.getCalories());
+        listing.setProteins(request.getProteins());
+        listing.setFats(request.getFats());
+        listing.setCarbs(request.getCarbs());
+        // A rejected offer goes back to the moderation queue once the business fixes it.
+        // Edits of approved offers are not re-moderated, to keep the admin queue short.
+        if (listing.getModerationStatus() == ModerationStatus.REJECTED) {
+            listing.setModerationStatus(ModerationStatus.PENDING);
+            listing.setModerationReason(null);
+        }
         // Replenishing a SOLD_OUT listing makes it visible again, if dates are valid.
         if (listing.getQuantity() == 0) listing.setStatus(ListingStatus.SOLD_OUT);
         else if (listing.getStatus() == ListingStatus.SOLD_OUT) listing.setStatus(ListingStatus.ACTIVE);
@@ -306,6 +287,7 @@ public class FoodListingService {
     /** Предложение доступно для бронирования в данный момент. */
     private boolean isAvailable(FoodListing listing, LocalDateTime now) {
         return listing.getStatus() == ListingStatus.ACTIVE
+                && listing.getModerationStatus() == ModerationStatus.APPROVED
                 && listing.getQuantity() != null
                 && listing.getQuantity() > 0
                 && listing.getExpiresAt() != null
@@ -352,7 +334,13 @@ public class FoodListingService {
                 recommendationScore,
                 business.getLatitude(),
                 business.getLongitude(),
-                listing.getCategory()
+                listing.getCategory(),
+                listing.getModerationStatus(),
+                listing.getModerationReason(),
+                listing.getCalories(),
+                listing.getProteins(),
+                listing.getFats(),
+                listing.getCarbs()
         );
     }
 

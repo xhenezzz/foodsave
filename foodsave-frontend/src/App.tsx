@@ -2,32 +2,34 @@ import { useEffect, useMemo, useState } from "react";
 import { Leaf, LogOut, RefreshCw, ScanLine } from "lucide-react";
 import { api, httpStatus } from "./api";
 import { parseImpact } from "./impact";
-import type { BusinessProfile, City, FoodCategory, FoodSaveQrResponse, Impact, Listing, Loyalty, Order, Profile, Review } from "./types";
+import type { BusinessApplication, BusinessProfile, City, ListingFormData, FoodSaveQrResponse, Impact, Listing, Loyalty, Order, Profile, Review } from "./types";
 import { errText, confirmedPayment, coordinatesCity, listingsForCity, listingAvailable, listingCity, orderPaidByServer, cityName } from "./utils";
-import { AuthModal, BusinessModal, ImpactModal, Landing, ListingModal, OrderModal, PasswordModal, ProfileModal, QrModal, ReviewModal, ScannerModal, Toast } from "./components";
+import { AuthModal, ImpactModal, Landing, ListingModal, OrderModal, PasswordModal, ProfileModal, QrModal, ReviewModal, ScannerModal, Toast } from "./components";
 import { DiscoverPage } from "./pages/DiscoverPage";
 import { OrdersPage } from "./pages/OrdersPage";
 import { BusinessPage } from "./pages/BusinessPage";
+import { BusinessApplyPage } from "./pages/BusinessApplyPage";
 import { AdminPage } from "./pages/AdminPage";
 import { EmailVerificationPage } from "./pages/EmailVerificationPage";
 import { ReputationModal } from "./pages/ReputationModal";
 import { StripeCheckoutModal } from "./pages/StripeCheckoutModal";
 import type { StripeCheckoutSession } from "./types";
 
-type Route = "/discover" | "/orders" | "/business" | "/admin";
+type Route = "/discover" | "/orders" | "/business" | "/business/apply" | "/admin";
 type EmailFlow = "check" | "verify" | null;
 function readEmailFlow(): EmailFlow {
   if (location.pathname === "/check-email") return "check";
   if (location.pathname === "/verify-email") return "verify";
   return null;
 }
-type Dialog = "profile" | "password" | "listing" | "business" | "order" | "qr" | "review" | "scanner" | "impact" | "reputation" | "stripePayment" | null;
+type Dialog = "profile" | "password" | "listing" | "order" | "qr" | "review" | "scanner" | "impact" | "reputation" | "stripePayment" | null;
 type ToastValue = {type: "success" | "error"; text: string} | null;
 const roleHome = (profile: Profile): Route => profile.role === "ADMIN" ? "/admin" : profile.role === "BUSINESS" ? "/business" : "/discover";
 function readRoute(): Route | null {
   if (location.pathname === "/discover") return "/discover";
   if (location.pathname === "/orders") return "/orders";
   if (location.pathname === "/business") return "/business";
+  if (location.pathname === "/business/apply") return "/business/apply";
   if (location.pathname === "/admin") return "/admin";
   return null;
 }
@@ -93,7 +95,7 @@ export default function App() {
   useEffect(() => {
     if (!profile || emailFlow) return;
     const target = roleHome(profile);
-    const validRoute = profile.role === "ADMIN" ? route === "/admin" : profile.role === "BUSINESS" ? route === "/business" : route === "/discover" || route === "/orders";
+    const validRoute = profile.role === "ADMIN" ? route === "/admin" : profile.role === "BUSINESS" ? route === "/business" || route === "/business/apply" : route === "/discover" || route === "/orders";
     if (!validRoute) navigate(target, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.role, route, emailFlow]);
@@ -417,7 +419,7 @@ export default function App() {
     try {await api.createReview({orderId:order.id,rating:ratingValue,comment});setDialog(null);await refresh();setToast({type:"success",text:"Отзыв опубликован"});}
     catch(error){setToast({type:"error",text:errText(error,"Не удалось отправить отзыв")});}
   }
-  async function saveListing(data:{title:string;description:string;originalPrice:number;foodSavePrice:number;quantity:number;weightKg:number;pickupStart:string;pickupEnd:string;expiresAt:string;productExpiresAt:string;category:FoodCategory},photos:File[]) {
+  async function saveListing(data:ListingFormData,photos:File[]) {
     try {
       const saved=selected?await api.updateListing(selected.id,{...data,version:selected.version ?? -1}):await api.createListing(data);
       const listingId=selected?.id??saved.id;
@@ -432,10 +434,13 @@ export default function App() {
     try{await api.cancelListing(listing.id);await refresh();setToast({type:"success",text:"Предложение отменено"});}
     catch(error){setToast({type:"error",text:errText(error,"Ошибка отмены")});}
   }
-  async function saveBusiness(data:{businessName:string;description:string;address:string;latitude:number;longitude:number}){
-    try {if(business)await api.updateBusinessProfile(data);else await api.createBusinessProfile(data);
-      setDialog(null);await refresh();setToast({type:"success",text:"Профиль бизнеса сохранён"});
-    }catch(error){setToast({type:"error",text:errText(error,"Не удалось сохранить профиль")});}
+  async function saveBusiness(data:BusinessApplication){
+    try {
+      const saved=business?await api.updateBusinessProfile(data):await api.createBusinessProfile(data);
+      await refresh();
+      navigate("/business");
+      setToast({type:"success",text:saved.status==="APPROVED"?"Профиль заведения сохранён":"Заявка отправлена — администратор проверит её в ближайшее время"});
+    }catch(error){setToast({type:"error",text:errText(error,"Не удалось отправить заявку")});}
   }
   async function scanQr(token:string){
     try {await api.scanOrderQr(token);setDialog(null);await refresh();setToast({type:"success",text:"Заказ выдан и подтверждён"});}
@@ -474,7 +479,7 @@ export default function App() {
   const isBusiness=profile.role==="BUSINESS";
   const isAdmin=profile.role==="ADMIN";
   const home=roleHome(profile);
-  const activeRoute:Route=isAdmin?"/admin":isBusiness?"/business":route==="/orders"?"/orders":"/discover";
+  const activeRoute:Route=isAdmin?"/admin":isBusiness?(route==="/business/apply"?"/business/apply":"/business"):route==="/orders"?"/orders":"/discover";
   const reservedCount=orders.filter(o=>o.status==="RESERVED").length;
   function onNav(event:React.MouseEvent<HTMLAnchorElement>,target:Route){
     if(event.button===0&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey){event.preventDefault();navigate(target);}
@@ -483,7 +488,7 @@ export default function App() {
     <header className="topbar"><div className="container nav">
       <a href={home} className="brand" onClick={event=>onNav(event,home)}><span className="brand-mark"><Leaf size={18}/></span>Food<span>Save</span></a>
       <nav aria-label="Основная навигация">
-        {isAdmin?<a className="nav-active" href="/admin" onClick={event=>onNav(event,"/admin")}>Админ-панель</a>:isBusiness?<a className={activeRoute==="/business"?"nav-active":""} href="/business" onClick={event=>onNav(event,"/business")}>Кабинет бизнеса</a>:<>
+        {isAdmin?<a className="nav-active" href="/admin" onClick={event=>onNav(event,"/admin")}>Админ-панель</a>:isBusiness?<a className={activeRoute.startsWith("/business")?"nav-active":""} href="/business" onClick={event=>onNav(event,"/business")}>Кабинет бизнеса</a>:<>
           <a className={activeRoute==="/discover"?"nav-active":""} href="/discover" onClick={event=>onNav(event,"/discover")}>Предложения</a>
           <a className={activeRoute==="/orders"?"nav-active":""} href="/orders" onClick={event=>onNav(event,"/orders")}>Мои заказы <span className="nav-count" key={reservedCount}>{reservedCount}</span></a>
         </>}
@@ -498,7 +503,8 @@ export default function App() {
       {!isBusiness&&activeRoute==="/discover"&&<DiscoverPage city={profile.city} listings={customerListings} hiddenUnknown={hiddenUnknown} nearby={nearby} coords={coords} locating={locating} onLocate={locate} onShowAll={()=>void showAllListings()} onOpen={listing=>{setSelected(listing);setDialog("order")}} onOrders={()=>navigate("/orders")}/>}
       {!isBusiness&&activeRoute==="/orders"&&<OrdersPage profile={profile} orders={orders} paidIds={confirmedPaid} payingId={payingId} onPay={pay} onQr={showOrderQr} onReview={order=>{setSelectedOrder(order);setDialog("review")}} onCancel={cancelOrder} onDiscover={()=>navigate("/discover")} onImpact={loadImpact}/>}
       {isAdmin&&<AdminPage adminId={profile.id} onToast={setToast}/>}
-      {isBusiness&&<BusinessPage business={business} listings={myListings} rating={rating} reviewCount={reviews.length} onProfile={()=>setDialog("business")} onCreate={()=>{setSelected(null);setDialog("listing")}} onEdit={listing=>{setSelected(listing);setDialog("listing")}} onCancel={cancelListing} onScanner={()=>setDialog("scanner")}/>}
+      {isBusiness&&activeRoute==="/business/apply"&&<BusinessApplyPage business={business} city={profile.city} onSubmit={saveBusiness} onBack={()=>navigate("/business")}/>}
+      {isBusiness&&activeRoute==="/business"&&<BusinessPage business={business} listings={myListings} rating={rating} reviewCount={reviews.length} onProfile={()=>navigate("/business/apply")} onCreate={()=>{setSelected(null);setDialog("listing")}} onEdit={listing=>{setSelected(listing);setDialog("listing")}} onCancel={cancelListing} onScanner={()=>setDialog("scanner")}/>}
     </main>
     <footer><div className="container footer"><b>Food<span>Save</span></b><span>Спасение еды — спасение планеты.</span><span>© 2026</span></div></footer>
     {dialog==="profile"&&<ProfileModal profile={profile} onClose={()=>setDialog(null)} onSaved={updateProfile} onPassword={()=>setDialog("password")} onReputation={()=>void loadReputation()}/>}
@@ -518,7 +524,6 @@ export default function App() {
       onRetry={()=>void loadImpact()}
       close={()=>setDialog(null)}
     />}
-    {dialog==="business"&&isBusiness&&<BusinessModal business={business} city={profile.city} close={()=>setDialog(null)} save={saveBusiness}/>}
     {dialog==="scanner"&&isBusiness&&<ScannerModal close={()=>setDialog(null)} scan={scanQr}/>}
     {toast&&<Toast key={`${toast.type}:${toast.text}`} t={toast}/>}
   </div>;

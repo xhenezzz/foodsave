@@ -26,12 +26,12 @@
 .admin-ring{position:absolute;width:170px;height:170px;border-radius:50%;border:2px dashed rgba(168,230,192,.45);animation:fx-orbit 18s linear infinite}
 
 /* ---------- Tabs with sliding glider ---------- */
-.admin-tabs{position:relative;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:5px;margin-bottom:24px;
+.admin-tabs{position:relative;display:grid;grid-template-columns:repeat(5,1fr);gap:4px;padding:5px;margin-bottom:24px;
   border-radius:16px;background:rgba(255,255,255,.75);border:1px solid #e0e9e2;box-shadow:var(--depth-shadow);backdrop-filter:blur(12px)}
 .admin-tabs button{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;border:0;border-radius:12px;
   background:transparent;color:#5f7368;font-weight:750;font-size:13px;transition:color .25s}
 .admin-tabs button.active{color:#fff}
-.admin-tab-glider{position:absolute;top:5px;bottom:5px;left:5px;width:calc((100% - 22px) / 4);border-radius:12px;
+.admin-tab-glider{position:absolute;top:5px;bottom:5px;left:5px;width:calc((100% - 26px) / 5);border-radius:12px;
   background:linear-gradient(180deg,#2c8a5f,#1f6d4b);box-shadow:0 3px 0 #134b33,0 10px 20px -10px rgba(19,75,51,.8);
   transform:translateX(calc(var(--tab,0) * (100% + 4px)));transition:transform .45s cubic-bezier(.34,1.4,.64,1)}
 .admin-panel{animation:fx-flip-in .55s cubic-bezier(.2,.75,.25,1) backwards;transform-origin:50% 0}
@@ -136,7 +136,7 @@
 }
 @media(max-width:620px){
   .admin-hero{padding:26px 22px}
-  .admin-tabs{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .admin-tabs{grid-template-columns:repeat(5,minmax(0,1fr))}
   .admin-tabs button{font-size:0;gap:0}
   .admin-tabs button svg{width:19px;height:19px}
   .admin-kpi strong{font-size:24px}
@@ -149,3 +149,33 @@
 /* Light gradient for the headline on the dark hero (the global one is tuned for light backgrounds). */
 .admin-hero h1 em{background-image:linear-gradient(100deg,#9ff0c2 0%,#e8ffd4 30%,#6fdca2 55%,#d6f7a8 80%,#9ff0c2 100%)}
 .admin-page .form-stack .form-end,.backdrop .form-stack .form-end{display:flex;justify-content:flex-end;gap:10px}
+
+/* ---------- Moderation: tab badges, applications, decisions ---------- */
+.admin-tab-badge{min-width:20px;height:20px;padding:0 6px;border-radius:99px;display:inline-grid;place-items:center;font:800 11px Manrope;font-style:normal;
+  background:#ff7a45;color:#fff;box-shadow:0 4px 10px -4px rgba(255,95,109,.9);animation:fs-pop .45s cubic-bezier(.34,1.56,.64,1) backwards}
+.admin-tabs button.active .admin-tab-badge{background:#fff;color:#c0581b}
+.admin-pill.moderation-pending{background:#fff3d9;color:#8b6b22}
+.admin-pill.moderation-approved{background:#e3f4e8;color:#24774f}
+.admin-pill.moderation-rejected{background:#fde9e4;color:#a8432f}
+.admin-decision{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+.admin-decision .primary-btn.small{min-height:36px;padding:0 12px;font-size:12px}
+.admin-reason{color:#a8432f !important}
+.admin-applications{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
+.admin-application{background:linear-gradient(160deg,rgba(255,255,255,.97),rgba(255,255,255,.88));border:1px solid #e1eae3;border-radius:20px;padding:18px;
+  display:grid;gap:12px;align-content:start;box-shadow:var(--depth-shadow)}
+.admin-application-head{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center}
+.admin-application-head h3{margin:0;font:800 17px Manrope;letter-spacing:-.4px}
+.admin-application-head small{color:var(--muted);font-size:12px}
+.admin-application-emoji{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-size:24px;background:linear-gradient(145deg,#fff1d6,#ffd8a8)}
+.admin-application-text{margin:0;font-size:13px;line-height:1.55;color:#4b5f53}
+.admin-application-facts{display:grid;grid-template-columns:92px 1fr;gap:6px 10px;margin:0;font-size:12px}
+.admin-application-facts dt{color:var(--muted)}
+.admin-application-facts dd{margin:0;overflow-wrap:anywhere;display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.admin-application-facts a{color:#1f8a58;font-weight:700;display:inline-flex;align-items:center;gap:3px}
+.admin-ai{padding:10px 12px;border-radius:14px;background:#f2f5f3;color:#4e6455;font-size:12px}
+.admin-ai b{display:flex;align-items:center;gap:6px}
+.admin-ai ul{margin:6px 0 0;padding-left:18px;line-height:1.5}
+.admin-ai.ok{background:#e9f7ee;color:#24774f}
+.admin-ai.warn{background:#fff6df;color:#8b6b22}
+.admin-ai.danger{background:#fdece7;color:#a8432f}
+@media(max-width:620px){.admin-applications{grid-template-columns:1fr}.admin-tab-badge{position:absolute;top:2px;right:4px;min-width:16px;height:16px;font-size:9px}.admin-tabs button{position:relative}}

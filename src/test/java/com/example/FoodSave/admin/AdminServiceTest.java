@@ -8,6 +8,8 @@ import com.example.FoodSave.foodlisting.entity.FoodListing;
 import com.example.FoodSave.foodlisting.entity.ListingStatus;
 import com.example.FoodSave.foodlisting.repo.FoodListingRepository;
 import com.example.FoodSave.business.entity.BusinessProfile;
+import com.example.FoodSave.business.repo.BusinessProfileRepository;
+import com.example.FoodSave.moderation.ModerationStatus;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
 import org.junit.jupiter.api.AfterEach;
@@ -30,7 +32,8 @@ class AdminServiceTest {
     private final EntityManager entityManager = mock(EntityManager.class);
     private final UserRepository users = mock(UserRepository.class);
     private final FoodListingRepository listings = mock(FoodListingRepository.class);
-    private final AdminService service = new AdminService(entityManager, users, listings);
+    private final BusinessProfileRepository businesses = mock(BusinessProfileRepository.class);
+    private final AdminService service = new AdminService(entityManager, users, listings, businesses);
     private User admin;
 
     @BeforeEach
@@ -106,6 +109,58 @@ class AdminServiceTest {
         when(listings.findByIdForUpdate(listing.getId())).thenReturn(Optional.of(listing));
         var error = assertThrows(ResponseStatusException.class, () -> service.cancelListing(listing.getId()));
         assertEquals(HttpStatus.CONFLICT, error.getStatusCode());
+    }
+
+    @Test
+    void approvingApplicationLetsBusinessPublish() {
+        BusinessProfile application = listing(ListingStatus.ACTIVE).getBusiness();
+        application.setStatus(ModerationStatus.PENDING);
+        application.setRejectionReason("старая причина");
+        when(businesses.findById(application.getId())).thenReturn(Optional.of(application));
+        when(businesses.save(any(BusinessProfile.class))).thenAnswer(i -> i.getArgument(0));
+
+        var result = service.approveApplication(application.getId());
+        assertEquals(ModerationStatus.APPROVED, result.status());
+        assertNull(result.rejectionReason());
+        assertNotNull(result.reviewedAt());
+    }
+
+    @Test
+    void rejectedApplicationKeepsTrimmedReason() {
+        BusinessProfile application = listing(ListingStatus.ACTIVE).getBusiness();
+        application.setStatus(ModerationStatus.PENDING);
+        application.setAiNotes("Описание слишком короткое\nАдрес без номера дома");
+        when(businesses.findById(application.getId())).thenReturn(Optional.of(application));
+        when(businesses.save(any(BusinessProfile.class))).thenAnswer(i -> i.getArgument(0));
+
+        var result = service.rejectApplication(application.getId(), "  нет номера дома  ");
+        assertEquals(ModerationStatus.REJECTED, result.status());
+        assertEquals("нет номера дома", result.rejectionReason());
+        assertEquals(2, result.aiNotes().size());
+    }
+
+    @Test
+    void approvedApplicationCannotBeApprovedTwice() {
+        BusinessProfile application = listing(ListingStatus.ACTIVE).getBusiness();
+        application.setStatus(ModerationStatus.APPROVED);
+        when(businesses.findById(application.getId())).thenReturn(Optional.of(application));
+        var error = assertThrows(ResponseStatusException.class, () -> service.approveApplication(application.getId()));
+        assertEquals(HttpStatus.CONFLICT, error.getStatusCode());
+    }
+
+    @Test
+    void listingModerationApprovesAndRejectsWithReason() {
+        FoodListing listing = listing(ListingStatus.ACTIVE);
+        listing.setModerationStatus(ModerationStatus.PENDING);
+        when(listings.findByIdForUpdate(listing.getId())).thenReturn(Optional.of(listing));
+
+        var rejected = service.rejectListing(listing.getId(), " фото не соответствует ");
+        assertEquals(ModerationStatus.REJECTED, rejected.moderationStatus());
+        assertEquals("фото не соответствует", rejected.moderationReason());
+
+        var approved = service.approveListing(listing.getId());
+        assertEquals(ModerationStatus.APPROVED, approved.moderationStatus());
+        assertNull(approved.moderationReason());
     }
 
     @Test

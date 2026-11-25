@@ -1,6 +1,7 @@
 package com.example.FoodSave.admin.dto;
 
 import com.example.FoodSave.foodlisting.entity.ListingStatus;
+import com.example.FoodSave.moderation.ModerationStatus;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -18,5 +19,7 @@ public record AdminListingResponse(
         int quantity,
         LocalDateTime pickupStart,
         LocalDateTime pickupEnd,
-        LocalDateTime expiresAt
+        LocalDateTime expiresAt,
+        ModerationStatus moderationStatus,
+        String moderationReason
 ) {}

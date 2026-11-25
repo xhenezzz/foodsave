@@ -2,6 +2,7 @@ package com.example.FoodSave.admin;
 
 import com.example.FoodSave.auth.entity.Role;
 import com.example.FoodSave.foodlisting.entity.ListingStatus;
+import com.example.FoodSave.moderation.ModerationStatus;
 import com.example.FoodSave.order.entity.OrderStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,14 +30,17 @@ class AdminQueriesIntegrationTest {
         assertTrue(stats.revenue().signum() >= 0);
         assertTrue(stats.foodSavedKg().signum() >= 0);
         assertTrue(stats.topBusinesses().size() <= 5);
+        assertTrue(stats.pendingApplications() >= 0 && stats.pendingListings() >= 0);
     }
 
     @Test
     void listQueriesRunWithAndWithoutFilters() {
         assertNotNull(adminService.users(null, null));
         assertNotNull(adminService.users("a_%!", Role.CUSTOMER));
-        assertNotNull(adminService.listings(null, null));
-        assertNotNull(adminService.listings("хлеб", ListingStatus.ACTIVE));
+        assertNotNull(adminService.listings(null, null, null));
+        assertNotNull(adminService.listings("хлеб", ListingStatus.ACTIVE, ModerationStatus.PENDING));
+        assertNotNull(adminService.applications(null));
+        assertNotNull(adminService.applications(ModerationStatus.PENDING));
         assertNotNull(adminService.orders(null));
         assertNotNull(adminService.orders(OrderStatus.COMPLETED));
         assertTrue(adminService.users(null, null).size() <= AdminService.MAX_ROWS);

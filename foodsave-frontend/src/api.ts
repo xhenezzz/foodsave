@@ -1,4 +1,8 @@
 import type {
+  AdminApplication,
+  BusinessApplication,
+  ModerationStatus,
+  Nutrition,
   AdminListing,
   AdminOrder,
   AdminStats,
@@ -227,7 +231,7 @@ export const api = {
     productExpiresAt: string;
     weightKg: number;
     category: FoodCategory;
-  }) =>
+  } & Nutrition) =>
     request<Listing>("/listings", {
       method: "POST",
       body: JSON.stringify(data)
@@ -249,7 +253,7 @@ export const api = {
     productExpiresAt: string;
       weightKg: number;
       category: FoodCategory;
-    }
+    } & Nutrition
   ) =>
     request<Listing>(`/listings/${id}`, {
       method: "PUT",
@@ -271,26 +275,14 @@ export const api = {
     request<BusinessProfile>("/business/profile"),
 
 
-  createBusinessProfile: (data: {
-    businessName: string;
-    description: string;
-    address: string;
-    latitude: number;
-    longitude: number;
-  }) =>
+  createBusinessProfile: (data: BusinessApplication) =>
     request<BusinessProfile>("/business/profile", {
       method: "POST",
       body: JSON.stringify(data)
     }),
 
 
-  updateBusinessProfile: (data: {
-    businessName: string;
-    description: string;
-    address: string;
-    latitude: number;
-    longitude: number;
-  }) =>
+  updateBusinessProfile: (data: BusinessApplication) =>
     request<BusinessProfile>("/business/profile", {
       method: "PUT",
       body: JSON.stringify(data)
@@ -388,8 +380,18 @@ export const api = {
       request<AdminUser[]>(`/admin/users${queryString({query: filter.query, role: filter.role})}`),
     setBlocked: (id: string, blocked: boolean, reason?: string) =>
       request<AdminUser>(`/admin/users/${id}/blocked`, {method: "PUT", body: JSON.stringify({blocked, reason: reason || null})}),
-    listings: (filter: {query?: string; status?: ListingStatus | ""} = {}) =>
-      request<AdminListing[]>(`/admin/listings${queryString({query: filter.query, status: filter.status})}`),
+    listings: (filter: {query?: string; status?: ListingStatus | ""; moderation?: ModerationStatus | ""} = {}) =>
+      request<AdminListing[]>(`/admin/listings${queryString({query: filter.query, status: filter.status, moderation: filter.moderation})}`),
+    approveListing: (id: string) =>
+      request<AdminListing>(`/admin/listings/${id}/approve`, {method: "POST"}),
+    rejectListing: (id: string, reason: string) =>
+      request<AdminListing>(`/admin/listings/${id}/reject`, {method: "POST", body: JSON.stringify({reason})}),
+    applications: (status?: ModerationStatus | "") =>
+      request<AdminApplication[]>(`/admin/applications${queryString({status})}`),
+    approveApplication: (id: string) =>
+      request<AdminApplication>(`/admin/applications/${id}/approve`, {method: "POST"}),
+    rejectApplication: (id: string, reason: string) =>
+      request<AdminApplication>(`/admin/applications/${id}/reject`, {method: "POST", body: JSON.stringify({reason})}),
     cancelListing: (id: string) =>
       request<AdminListing>(`/admin/listings/${id}/cancel`, {method: "POST"}),
     orders: (status?: OrderStatus | "") =>

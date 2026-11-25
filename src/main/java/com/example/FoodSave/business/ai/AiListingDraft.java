@@ -19,6 +19,11 @@ public record AiListingDraft(
             String ingredients,
             String allergens,
             String expiryDateText,
-            String storageConditions
+            String storageConditions,
+            // Nutrition per 100 g read from the label; a suggestion the seller must confirm.
+            Double calories,
+            Double proteins,
+            Double fats,
+            Double carbs
     ) {}
 }

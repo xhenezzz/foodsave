@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import {
-  Ban, BarChart3, Building2, CheckCircle2, Leaf, LockOpen, PackageCheck, RefreshCw, Search,
-  ShieldCheck, ShoppingBag, Store, Trash2, Users, Wallet, X
+  Ban, BarChart3, Building2, CheckCircle2, ClipboardCheck, ExternalLink, Leaf, LockOpen, PackageCheck, Phone, RefreshCw, Search,
+  ShieldCheck, ShoppingBag, Sparkles, Store, Trash2, Users, Wallet, X
 } from "lucide-react";
 import { api } from "../api";
 import { CountUp } from "../components";
-import type { AdminListing, AdminStats, AdminUser, ListingStatus, OrderStatus, Role } from "../types";
+import type { AdminApplication, AdminListing, AdminStats, AdminUser, ListingStatus, ModerationStatus, OrderStatus, Role } from "../types";
+import { BUSINESS_TYPES } from "./BusinessApplyPage";
 import { cityName, dt, errText, money, stagger } from "../utils";
 import "./AdminPage.css";
 
-type Tab = "overview" | "users" | "listings" | "orders";
+type Tab = "overview" | "applications" | "users" | "listings" | "orders";
 type Notify = (toast: {type: "success" | "error"; text: string}) => void;
 
 const ROLE_LABEL: Record<Role, string> = {CUSTOMER: "Покупатель", BUSINESS: "Бизнес", ADMIN: "Администратор"};
@@ -22,10 +23,17 @@ const decimal = (n: number, digits = 1) => new Intl.NumberFormat("ru-RU", {maxim
 
 export function AdminPage({adminId, onToast}: {adminId: string; onToast: Notify}) {
   const [tab, setTab] = useState<Tab>("overview");
-  const tabs: Array<{id: Tab; label: string; icon: typeof Users}> = [
+  // Pending counters on the tabs; refreshed after every moderation decision.
+  const [pending, setPending] = useState({applications: 0, listings: 0});
+  const refreshPending = useCallback(() => {
+    api.admin.stats().then(s => setPending({applications: s.pendingApplications, listings: s.pendingListings})).catch(() => undefined);
+  }, []);
+  useEffect(refreshPending, [refreshPending]);
+  const tabs: Array<{id: Tab; label: string; icon: typeof Users; badge?: number}> = [
     {id: "overview", label: "Обзор", icon: BarChart3},
+    {id: "applications", label: "Заявки", icon: ClipboardCheck, badge: pending.applications},
     {id: "users", label: "Пользователи", icon: Users},
-    {id: "listings", label: "Объявления", icon: Store},
+    {id: "listings", label: "Объявления", icon: Store, badge: pending.listings},
     {id: "orders", label: "Заказы", icon: ShoppingBag}
   ];
   return <section className="section container admin-page">
@@ -33,7 +41,7 @@ export function AdminPage({adminId, onToast}: {adminId: string; onToast: Notify}
       <div className="admin-hero-text">
         <span className="kicker"><ShieldCheck size={14}/> FoodSave Admin</span>
         <h1>Панель <em>администратора</em></h1>
-        <p>Состояние платформы, пользователи, модерация объявлений и все заказы — в одном месте.</p>
+        <p>Состояние платформы, заявки заведений, модерация объявлений, пользователи и заказы — в одном месте.</p>
       </div>
       <div className="admin-hero-art" aria-hidden="true">
         <div className="admin-cube"><span/><span/><span/><span/><span/><span/></div>
@@ -41,14 +49,15 @@ export function AdminPage({adminId, onToast}: {adminId: string; onToast: Notify}
       </div>
     </div>
     <div className="admin-tabs" role="tablist" aria-label="Разделы админ-панели">
-      {tabs.map(({id, label, icon: Icon}) => <button key={id} role="tab" aria-selected={tab === id}
-        className={tab === id ? "active" : ""} onClick={() => setTab(id)}><Icon size={16}/>{label}</button>)}
+      {tabs.map(({id, label, icon: Icon, badge}) => <button key={id} role="tab" aria-selected={tab === id}
+        className={tab === id ? "active" : ""} onClick={() => setTab(id)}><Icon size={16}/>{label}{badge ? <em className="admin-tab-badge" key={badge}>{badge}</em> : null}</button>)}
       <span className="admin-tab-glider" style={{"--tab": tabs.findIndex(t => t.id === tab)} as React.CSSProperties}/>
     </div>
     <div className="admin-panel" key={tab}>
       {tab === "overview" && <Overview/>}
       {tab === "users" && <UsersTab adminId={adminId} onToast={onToast}/>}
-      {tab === "listings" && <ListingsTab onToast={onToast}/>}
+      {tab === "applications" && <ApplicationsTab onToast={onToast} onChanged={refreshPending}/>}
+      {tab === "listings" && <ListingsTab onToast={onToast} onChanged={refreshPending}/>}
       {tab === "orders" && <OrdersTab/>}
     </div>
   </section>;
@@ -239,46 +248,150 @@ function BlockDialog({user, busy, onCancel, onConfirm}: {user: AdminUser; busy: 
 
 // ------------------------------------------------------------------ listings
 
-function ListingsTab({onToast}: {onToast: Notify}) {
+const MODERATION_LABEL: Record<ModerationStatus, string> = {PENDING: "На модерации", APPROVED: "Одобрено", REJECTED: "Отклонено"};
+
+function ListingsTab({onToast, onChanged}: {onToast: Notify; onChanged: () => void}) {
   const [query, setQuery] = useState("");
   const [submitted, setSubmitted] = useState("");
-  const [status, setStatus] = useState<ListingStatus | "">("ACTIVE");
-  const {data, setData, loading, error, reload} = useAdminData(() => api.admin.listings({query: submitted, status}), [submitted, status]);
+  const [status, setStatus] = useState<ListingStatus | "">("");
+  const [moderation, setModeration] = useState<ModerationStatus | "">("PENDING");
+  const {data, setData, loading, error, reload} = useAdminData(() => api.admin.listings({query: submitted, status, moderation}), [submitted, status, moderation]);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<AdminListing | null>(null);
 
-  async function cancel(listing: AdminListing) {
-    if (!window.confirm(`Снять с публикации «${listing.title}» (${listing.businessName})?`)) return;
+  async function act(listing: AdminListing, action: () => Promise<AdminListing>, success: string) {
     setBusyId(listing.id);
     try {
-      const updated = await api.admin.cancelListing(listing.id);
+      const updated = await action();
       setData(list => list?.map(l => l.id === updated.id ? updated : l) ?? null);
-      onToast({type: "success", text: "Объявление снято с публикации"});
+      setRejecting(null);
+      onChanged();
+      onToast({type: "success", text: success});
     } catch (err) {
-      onToast({type: "error", text: errText(err, "Не удалось отменить объявление")});
+      onToast({type: "error", text: errText(err, "Не удалось выполнить действие")});
     } finally { setBusyId(null); }
   }
+  const cancel = (l: AdminListing) => {
+    if (window.confirm(`Снять с публикации «${l.title}» (${l.businessName})?`)) void act(l, () => api.admin.cancelListing(l.id), "Объявление снято с публикации");
+  };
 
   return <>
     <form className="admin-filters" onSubmit={e => { e.preventDefault(); setSubmitted(query); }}>
       <label className="catalog-search admin-search"><Search size={18}/><input type="search" placeholder="Название или заведение…" value={query} onChange={e => setQuery(e.target.value)}/></label>
+      <select value={moderation} onChange={e => setModeration(e.target.value as ModerationStatus | "")} aria-label="Модерация"><option value="PENDING">На модерации</option><option value="APPROVED">Одобренные</option><option value="REJECTED">Отклонённые</option><option value="">Любая модерация</option></select>
       <select value={status} onChange={e => setStatus(e.target.value as ListingStatus | "")} aria-label="Статус"><option value="">Все статусы</option><option value="ACTIVE">Активные</option><option value="SOLD_OUT">Распроданные</option><option value="EXPIRED">Истёкшие</option><option value="CANCELED">Отменённые</option></select>
       <button className="primary-btn">Найти</button>
     </form>
     <StateBlock loading={loading && !data} error={error} empty={!!data && data.length === 0} onRetry={reload}/>
     {data && data.length > 0 && <div className="admin-cards">{data.map((l, i) => {
       const discount = l.originalPrice > 0 ? Math.round((1 - l.foodSavePrice / l.originalPrice) * 100) : 0;
-      const closable = l.status === "ACTIVE" || l.status === "SOLD_OUT";
+      const closable = l.moderationStatus === "APPROVED" && (l.status === "ACTIVE" || l.status === "SOLD_OUT");
       return <article className="admin-listing fs-stagger" data-tilt style={stagger(i)} key={l.id}>
-        <div className="admin-listing-top"><span className={`admin-pill status-${l.status.toLowerCase()}`}>{LISTING_LABEL[l.status] ?? l.status}</span><b className="admin-discount">−{discount}%</b></div>
+        <div className="admin-listing-top"><span className={`admin-pill moderation-${l.moderationStatus.toLowerCase()}`}>{MODERATION_LABEL[l.moderationStatus]}</span><b className="admin-discount">−{discount}%</b></div>
         <h3>{l.title}</h3>
         <p><Building2 size={13}/> {l.businessName} · {l.city ? cityName(l.city) : "город не указан"}</p>
-        <small>{l.ownerEmail}</small>
+        <small>{l.ownerEmail} · {LISTING_LABEL[l.status] ?? l.status}</small>
         <div className="admin-listing-meta"><span><del>{money(l.originalPrice)}</del> <b>{money(l.foodSavePrice)}</b></span><span>Остаток: {l.quantity}</span></div>
         <small>Выдача: {dt(l.pickupStart)} — {dt(l.pickupEnd)}</small>
-        {closable && <button className="danger-btn small full" disabled={busyId === l.id} onClick={() => void cancel(l)}><Trash2 size={14}/> {busyId === l.id ? "Снимаем…" : "Снять с публикации"}</button>}
+        {l.moderationStatus === "REJECTED" && l.moderationReason && <small className="admin-reason">Причина: {l.moderationReason}</small>}
+        {l.moderationStatus === "PENDING" && <div className="admin-decision">
+          <button className="primary-btn small" disabled={busyId === l.id} onClick={() => void act(l, () => api.admin.approveListing(l.id), "Объявление опубликовано")}><CheckCircle2 size={14}/> Одобрить</button>
+          <button className="danger-btn small" disabled={busyId === l.id} onClick={() => setRejecting(l)}><X size={14}/> Отклонить</button>
+        </div>}
+        {closable && <button className="danger-btn small full" disabled={busyId === l.id} onClick={() => cancel(l)}><Trash2 size={14}/> {busyId === l.id ? "Снимаем…" : "Снять с публикации"}</button>}
       </article>;
     })}</div>}
+    {rejecting && <RejectDialog title={`Отклонить «${rejecting.title}»?`} text="Объявление не появится в каталоге. Бизнес увидит причину и сможет исправить объявление."
+      busy={busyId === rejecting.id} onCancel={() => setRejecting(null)} onConfirm={reason => void act(rejecting, () => api.admin.rejectListing(rejecting.id, reason), "Объявление отклонено")}/>}
   </>;
+}
+
+// ------------------------------------------------------------------ applications
+
+const AI_VERDICT: Record<string, {label: string; tone: string}> = {
+  APPROVE: {label: "AI: выглядит правдоподобно", tone: "ok"},
+  REVIEW: {label: "AI: нужна проверка", tone: "warn"},
+  REJECT: {label: "AI: похоже на спам", tone: "danger"},
+  UNAVAILABLE: {label: "AI-проверка недоступна", tone: ""}
+};
+
+function ApplicationsTab({onToast, onChanged}: {onToast: Notify; onChanged: () => void}) {
+  const [status, setStatus] = useState<ModerationStatus | "">("PENDING");
+  const {data, setData, loading, error, reload} = useAdminData(() => api.admin.applications(status), [status]);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<AdminApplication | null>(null);
+
+  async function decide(application: AdminApplication, action: () => Promise<AdminApplication>, success: string) {
+    setBusyId(application.id);
+    try {
+      const updated = await action();
+      setData(list => list?.map(a => a.id === updated.id ? updated : a) ?? null);
+      setRejecting(null);
+      onChanged();
+      onToast({type: "success", text: success});
+    } catch (err) {
+      onToast({type: "error", text: errText(err, "Не удалось сохранить решение")});
+    } finally { setBusyId(null); }
+  }
+
+  return <>
+    <div className="admin-filters">
+      <select value={status} onChange={e => setStatus(e.target.value as ModerationStatus | "")} aria-label="Статус заявки"><option value="PENDING">Ожидают решения</option><option value="APPROVED">Одобренные</option><option value="REJECTED">Отклонённые</option><option value="">Все заявки</option></select>
+      <button className="ghost-btn" onClick={reload} disabled={loading}><RefreshCw size={15} className={loading ? "spin" : ""}/> Обновить</button>
+      <span className="muted admin-filter-note">AI только подсказывает — решение принимает администратор</span>
+    </div>
+    <StateBlock loading={loading && !data} error={error} empty={!!data && data.length === 0} onRetry={reload}/>
+    {data && data.length > 0 && <div className="admin-applications">{data.map((a, i) => {
+      const verdict = AI_VERDICT[a.aiVerdict ?? "UNAVAILABLE"] ?? AI_VERDICT.UNAVAILABLE;
+      const type = a.businessType ? BUSINESS_TYPES[a.businessType] : null;
+      return <article className="admin-application fs-stagger" style={stagger(i)} key={a.id}>
+        <div className="admin-application-head">
+          <span className="admin-application-emoji">{type?.emoji ?? "🏪"}</span>
+          <div><h3>{a.businessName}</h3><small>{type?.label ?? "Тип не указан"} · {a.city ? cityName(a.city) : "город не указан"}</small></div>
+          <span className={`admin-pill moderation-${a.status.toLowerCase()}`}>{a.status === "PENDING" ? "Ожидает решения" : MODERATION_LABEL[a.status]}</span>
+        </div>
+        {a.description && <p className="admin-application-text">{a.description}</p>}
+        <dl className="admin-application-facts">
+          <dt>Адрес</dt><dd>{a.address}{a.latitude != null && a.longitude != null && <> · <a href={`https://www.openstreetmap.org/?mlat=${a.latitude}&mlon=${a.longitude}#map=17/${a.latitude}/${a.longitude}`} target="_blank" rel="noreferrer">на карте <ExternalLink size={11}/></a></>}</dd>
+          <dt>Владелец</dt><dd>{a.ownerUsername} · {a.ownerEmail}</dd>
+          <dt>Контакты</dt><dd><Phone size={11}/> {a.contactPhone ?? "—"}</dd>
+          <dt>БИН/ИИН</dt><dd>{a.bin || "не указан"}</dd>
+          {a.submittedAt && <><dt>Отправлена</dt><dd>{dt(a.submittedAt)}</dd></>}
+        </dl>
+        <div className={`admin-ai ${verdict.tone}`}>
+          <b><Sparkles size={14}/> {verdict.label}</b>
+          {a.aiNotes.length > 0 && <ul>{a.aiNotes.map((note, n) => <li key={n}>{note}</li>)}</ul>}
+        </div>
+        {a.status === "REJECTED" && a.rejectionReason && <small className="admin-reason">Причина отклонения: {a.rejectionReason}</small>}
+        {a.status !== "APPROVED" && <div className="admin-decision">
+          <button className="primary-btn small" disabled={busyId === a.id} onClick={() => void decide(a, () => api.admin.approveApplication(a.id), `«${a.businessName}» одобрено`)}><CheckCircle2 size={14}/> Одобрить</button>
+          {a.status === "PENDING" && <button className="danger-btn small" disabled={busyId === a.id} onClick={() => setRejecting(a)}><X size={14}/> Отклонить</button>}
+        </div>}
+      </article>;
+    })}</div>}
+    {rejecting && <RejectDialog title={`Отклонить заявку «${rejecting.businessName}»?`} text="Бизнес увидит причину в кабинете, сможет исправить данные и отправить заявку снова."
+      busy={busyId === rejecting.id} onCancel={() => setRejecting(null)} onConfirm={reason => void decide(rejecting, () => api.admin.rejectApplication(rejecting.id, reason), "Заявка отклонена")}/>}
+  </>;
+}
+
+/** Rejection always needs a reason the business can act on. */
+function RejectDialog({title, text, busy, onCancel, onConfirm}: {title: string; text: string; busy: boolean; onCancel: () => void; onConfirm: (reason: string) => void}) {
+  const [reason, setReason] = useState("");
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+  return <div className="backdrop"><div className="modal" role="dialog" aria-modal="true" aria-label={title}>
+    <button type="button" className="close" onClick={onCancel} aria-label="Закрыть"><X size={18}/></button>
+    <div className="modal-icon admin-danger-icon"><X size={22}/></div>
+    <h2>{title}</h2>
+    <p className="muted">{text}</p>
+    <form className="form-stack" onSubmit={e => { e.preventDefault(); if (reason.trim()) onConfirm(reason.trim()); }}>
+      <label className="field"><span>Причина — увидит бизнес</span><textarea required maxLength={500} value={reason} onChange={e => setReason(e.target.value)} placeholder="Например: адрес без номера дома, фото не соответствует товару"/></label>
+      <div className="form-end"><button type="button" className="ghost-btn" onClick={onCancel}>Отмена</button><button className="danger-btn" disabled={busy || !reason.trim()}><X size={16}/> {busy ? "Сохраняем…" : "Отклонить"}</button></div>
+    </form>
+  </div></div>;
 }
 
 // ------------------------------------------------------------------ orders

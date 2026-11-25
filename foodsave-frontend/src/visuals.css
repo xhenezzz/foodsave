@@ -126,3 +126,41 @@
   .landing-cta{flex-direction:column;text-align:center;padding:26px 20px}
   .impact-art{display:none}
 }
+
+/* ---------- Business application status & listing moderation ---------- */
+.application-card{display:flex;align-items:center;gap:16px;padding:22px 24px;border-radius:22px;margin:0 0 24px;border:1px solid}
+.application-card>div{flex:1}
+.application-card b{font:800 17px Manrope}
+.application-card p{margin:5px 0 0;font-size:13px;line-height:1.55;color:#4d5d52}
+.application-card small{display:block;margin-top:6px;font-size:12px;color:var(--muted)}
+.application-icon{width:48px;height:48px;border-radius:15px;display:grid;place-items:center;flex:0 0 auto;color:#fff}
+.application-card.new{background:linear-gradient(120deg,#effaf2,#fff7e8);border-color:#e3eedc}
+.application-card.new .application-icon{background:linear-gradient(145deg,#3cc488,#1d7a52)}
+.application-card.pending{background:linear-gradient(120deg,#fff8e6,#fffdf5);border-color:#f2e2b5}
+.application-card.pending .application-icon{background:linear-gradient(145deg,#ffd25e,#e0a92b);animation:fs-pulse-soft 2.4s ease-in-out infinite}
+.application-card.rejected{background:linear-gradient(120deg,#fff1ec,#fffaf8);border-color:#f6d3c6}
+.application-card.rejected .application-icon{background:linear-gradient(145deg,var(--peach),var(--coral))}
+.business-item-badges{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.status.moderation-pending{display:inline-flex;align-items:center;gap:4px;background:#fff3d9;color:#8b6b22}
+.status.moderation-rejected{background:#fde9e4;color:#a8432f}
+.moderation-note{color:#a8432f !important;font-weight:650}
+@media(max-width:620px){.application-card{flex-direction:column;align-items:flex-start}.application-card button{width:100%}}
+
+/* ---------- Nutrition (КБЖУ) ---------- */
+.nutrition-editor{display:grid;gap:10px;padding:16px;border-radius:16px;background:linear-gradient(135deg,#fffaf0,#f4fbf5);border:1px solid #efe6d2}
+.nutrition-editor-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.nutrition-editor-head>div{display:grid;gap:2px}
+.nutrition-editor-head strong{font:800 14px Manrope}
+.nutrition-editor-head small{font-size:11px;color:var(--muted)}
+.nutrition-inputs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.nutrition-warning{margin:0;padding:9px 11px;border-radius:10px;background:#fff6dc;color:#8a6a00;font-size:12px;line-height:1.5}
+.moderation-hint{margin:0;display:flex;align-items:center;gap:7px;padding:10px 12px;border-radius:12px;background:#eef7ff;color:#2f6a92;font-size:12px}
+.kcal-chip{padding:2px 7px;border-radius:99px;background:#fff1e6;color:#c0581b !important;font-weight:700}
+.nutrition-facts{display:grid;grid-template-columns:auto repeat(4,minmax(0,1fr));align-items:stretch;gap:8px;margin:14px 0 4px}
+.nutrition-title{align-self:center;font-size:11px;font-weight:800;color:var(--muted);writing-mode:vertical-rl;transform:rotate(180deg)}
+.nutrition-cell{display:grid;place-items:center;gap:2px;padding:10px 6px;border-radius:14px;background:#f5f8f4;text-align:center}
+.nutrition-cell b{font:800 18px Manrope;color:var(--ink)}
+.nutrition-cell small{font-size:10px;color:var(--muted)}
+.nutrition-cell.calories{background:linear-gradient(145deg,#fff1e0,#ffe0c4)}
+.nutrition-cell.calories b{color:#c0581b}
+@media(max-width:620px){.nutrition-inputs{grid-template-columns:repeat(2,minmax(0,1fr))}}

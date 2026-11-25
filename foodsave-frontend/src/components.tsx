@@ -1,11 +1,11 @@
 import { useListingCover, PhotoManager } from "./pages/ListingPhotos";
-import { BusinessLocationPicker, type BusinessLocation } from "./BusinessLocationPicker";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { ArrowRight, Building2, Camera, CheckCircle2, Clock3, Copy, Leaf, MapPin, RefreshCw, ScanLine, ShieldCheck, Sparkles, Star, Ticket, UserRound, X } from "lucide-react";
 import { api } from "./api";
+import { NUTRITION_FIELDS, caloriesMismatch, formatNutritionValue, hasNutrition, nutritionError, parseNutritionInput, type NutritionKey } from "./nutrition";
 import { BasketArt, CATEGORY_THEME, FoodCover, HowItWorks, PlanetArt, StoreArt, themeStyle } from "./visuals";
-import type { AiListingDraft, BusinessProfile, City, FoodCategory, Impact, Listing, Order, Profile } from "./types";
+import type { AiListingDraft, City, ListingFormData, Nutrition, FoodCategory, Impact, Listing, Order, Profile } from "./types";
 import { money, dt, time, disc, qrImg, errText, toLocal, stagger } from "./utils";
 
 type Toast = {type:"success"|"error";text:string}|null;
@@ -32,7 +32,7 @@ export function CountUp({value,duration=900}:{value:number;duration?:number}){
   return <>{shown.toLocaleString("ru-RU")}</>;
 }
 export function Empty(){return <div className="empty"><BasketArt className="empty-art"/><h3>Пока пусто</h3><p>Активных предложений пока нет — загляни чуть позже.</p></div>}
-export function ListingCard({listing:l,onOpen,recommendationReason,index=0}:{listing:Listing;onOpen:()=>void;recommendationReason?:string;index?:number}){const cover=useListingCover(l.id);return <article className="listing-card fs-stagger" data-tilt style={stagger(index)}><div className="listing-image">{cover?<img className="listing-photo" src={cover} alt={l.title}/>:<FoodCover title={l.title} category={l.category}/>}<b className="discount">−{disc(l.originalPrice,l.foodSavePrice)}%</b><span className="available">● {l.status==="ACTIVE"?"Доступно":l.status}</span></div><div className="listing-body">{recommendationReason&&<div className="recommendation-tag"><Sparkles size={12}/>{recommendationReason}</div>}<div className="title-line"><h3>{l.title}</h3><span>×{l.quantity}</span></div><p>{l.description||"Предложение от FoodSave Business"}</p><div className="meta"><span><Building2 size={13}/> {l.businessName||"Бизнес"}</span>{l.businessRating!=null&&<span><Star size={13}/> {l.businessRating.toFixed(1)}</span>}{l.distanceKm!=null&&<span><MapPin size={13}/> {l.distanceKm.toFixed(1)} км</span>}</div><div className="pickup"><Clock3 size={14}/> {dt(l.pickupStart)} — {time(l.pickupEnd)}</div><div className="price"><div><del>{money(l.originalPrice)}</del><b>{money(l.foodSavePrice)}</b></div><button className="circle" disabled={l.status!=="ACTIVE"} onClick={onOpen} aria-label={`Открыть предложение ${l.title}`}><ArrowRight size={18}/></button></div></div></article>}
+export function ListingCard({listing:l,onOpen,recommendationReason,index=0}:{listing:Listing;onOpen:()=>void;recommendationReason?:string;index?:number}){const cover=useListingCover(l.id);return <article className="listing-card fs-stagger" data-tilt style={stagger(index)}><div className="listing-image">{cover?<img className="listing-photo" src={cover} alt={l.title}/>:<FoodCover title={l.title} category={l.category}/>}<b className="discount">−{disc(l.originalPrice,l.foodSavePrice)}%</b><span className="available">● {l.status==="ACTIVE"?"Доступно":l.status}</span></div><div className="listing-body">{recommendationReason&&<div className="recommendation-tag"><Sparkles size={12}/>{recommendationReason}</div>}<div className="title-line"><h3>{l.title}</h3><span>×{l.quantity}</span></div><p>{l.description||"Предложение от FoodSave Business"}</p><div className="meta"><span><Building2 size={13}/> {l.businessName||"Бизнес"}</span>{l.businessRating!=null&&<span><Star size={13}/> {l.businessRating.toFixed(1)}</span>}{l.distanceKm!=null&&<span><MapPin size={13}/> {l.distanceKm.toFixed(1)} км</span>}{l.calories!=null&&<span className="kcal-chip">🔥 {formatNutritionValue(l.calories)} ккал</span>}</div><div className="pickup"><Clock3 size={14}/> {dt(l.pickupStart)} — {time(l.pickupEnd)}</div><div className="price"><div><del>{money(l.originalPrice)}</del><b>{money(l.foodSavePrice)}</b></div><button className="circle" disabled={l.status!=="ACTIVE"} onClick={onOpen} aria-label={`Открыть предложение ${l.title}`}><ArrowRight size={18}/></button></div></div></article>}
 function Modal({children,close,wide=false}:{children:ReactNode;close:()=>void;wide?:boolean}){
   const closeRef=useRef(close);closeRef.current=close;
   useEffect(()=>{
@@ -91,7 +91,7 @@ const FOOD_CATEGORY_OPTIONS: Record<"ru"|"kk"|"en",Array<{value:FoodCategory;lab
   ]
 };
 
-export function ListingModal({existing,close,submit}:{existing:Listing|null;close:()=>void;submit:(d:{title:string;description:string;originalPrice:number;foodSavePrice:number;quantity:number;weightKg:number;pickupStart:string;pickupEnd:string;expiresAt:string;productExpiresAt:string;category:FoodCategory},photos:File[])=>void}){
+export function ListingModal({existing,close,submit}:{existing:Listing|null;close:()=>void;submit:(d:ListingFormData,photos:File[])=>void}){
   const defaultStart = new Date(Math.ceil((Date.now()+5*60000)/(15*60000))*(15*60000));
   const start=existing?new Date(existing.pickupStart):defaultStart;
   const end=existing?new Date(existing.pickupEnd):new Date(defaultStart.getTime()+3*3600000);
@@ -106,6 +106,13 @@ export function ListingModal({existing,close,submit}:{existing:Listing|null;clos
   const [photos,setPhotos]=useState<File[]>([]);
   const [photoError,setPhotoError]=useState("");
   const [productExpiresAt,setProductExpiresAt]=useState(existing?.productExpiresAt?toLocal(new Date(existing.productExpiresAt)):"");
+  const [nutrition,setNutrition]=useState<Record<NutritionKey,string>>(()=>({
+    calories:existing?.calories!=null?String(existing.calories):"",proteins:existing?.proteins!=null?String(existing.proteins):"",
+    fats:existing?.fats!=null?String(existing.fats):"",carbs:existing?.carbs!=null?String(existing.carbs):""
+  }));
+  const parsedNutrition={calories:parseNutritionInput(nutrition.calories),proteins:parseNutritionInput(nutrition.proteins),fats:parseNutritionInput(nutrition.fats),carbs:parseNutritionInput(nutrition.carbs)};
+  const nutritionProblem=nutritionError(parsedNutrition);
+  const expectedCalories=nutritionProblem?null:caloriesMismatch(parsedNutrition);
   const [aiNotes,setAiNotes]=useState("");
   const [aiLanguage,setAiLanguage]=useState<"ru"|"kk"|"en">("ru");
   const [aiLoading,setAiLoading]=useState(false);
@@ -150,7 +157,8 @@ export function ListingModal({existing,close,submit}:{existing:Listing|null;clos
     const expiry=new Date(productExpiresAt).getTime();
     if(!Number.isFinite(expiry)||expiry<=en+15*60000){alert("Продукт должен быть годен минимум 15 минут после выдачи");return;}
     if(ex>expiry){alert("Срок действия предложения не может превышать срок годности продукта");return;}
-    submit({...f,category,productExpiresAt,originalPrice:+f.originalPrice,foodSavePrice:+f.foodSavePrice,quantity:+f.quantity,weightKg:+f.weightKg},photos);
+    if(nutritionProblem){alert(nutritionProblem);return;}
+    submit({...f,category,productExpiresAt,originalPrice:+f.originalPrice,foodSavePrice:+f.foodSavePrice,quantity:+f.quantity,weightKg:+f.weightKg,...parsedNutrition},photos);
   };
 
   const labelRows=aiDraft?.label?[
@@ -199,6 +207,16 @@ export function ListingModal({existing,close,submit}:{existing:Listing|null;clos
       <Field label="Забрать до" type="datetime-local" value={f.pickupEnd} onChange={v=>set("pickupEnd",v)}/>
       <div className="span"><Field label="Истекает (срок действия объявления)" type="datetime-local" value={f.expiresAt} onChange={v=>set("expiresAt",v)}/></div>
       <div className="span"><Field label="Годен до (срок продукта; подтверждает продавец)" type="datetime-local" required value={productExpiresAt} onChange={setProductExpiresAt}/><p className="muted">Обязательно: продукт должен оставаться годным во время выдачи и ещё 15 минут. AI не заполняет это поле автоматически.</p></div>
+      <section className="span nutrition-editor">
+        <div className="nutrition-editor-head"><div><strong>Пищевая ценность на 100 г</strong><small>Необязательно — покупатели увидят КБЖУ в карточке</small></div>
+          {aiDraft&&hasNutrition(aiDraft.label)&&<button type="button" className="ghost-btn small" onClick={()=>setNutrition({calories:aiDraft.label.calories!=null?String(aiDraft.label.calories):"",proteins:aiDraft.label.proteins!=null?String(aiDraft.label.proteins):"",fats:aiDraft.label.fats!=null?String(aiDraft.label.fats):"",carbs:aiDraft.label.carbs!=null?String(aiDraft.label.carbs):""})}><Sparkles size={14}/> Подставить с упаковки</button>}
+        </div>
+        {aiDraft&&hasNutrition(aiDraft.label)&&<p className="ai-field-hint">AI прочитал на упаковке: {NUTRITION_FIELDS.map(({key,label,unit})=>`${label.toLowerCase()} ${formatNutritionValue(aiDraft.label[key])} ${unit}`).join(" · ")}. Проверь значения перед публикацией.</p>}
+        <div className="nutrition-inputs">{NUTRITION_FIELDS.map(({key,label,unit})=><label className="field" key={key}><span>{label}, {unit}</span><input inputMode="decimal" value={nutrition[key]} placeholder="—" onChange={e=>setNutrition(previous=>({...previous,[key]:e.target.value}))}/></label>)}</div>
+        {nutritionProblem&&<p className="ai-listing-error" role="alert">{nutritionProblem}</p>}
+        {expectedCalories!=null&&<p className="nutrition-warning">Калории не сходятся с составом: по формуле 4·Б + 9·Ж + 4·У выходит около {expectedCalories} ккал. Проверь этикетку.</p>}
+      </section>
+      {!existing&&<p className="span moderation-hint"><ShieldCheck size={15}/> Новое предложение появится в каталоге после проверки модератором.</p>}
       <div className="span">{existing&&<><h3>Загруженные фотографии</h3><PhotoManager listingId={existing.id}/></>}</div>
       <div className="form-end span"><button type="button" className="ghost-btn" onClick={close}>Отмена</button><button className="primary-btn" disabled={aiLoading}>{existing?"Сохранить":"Опубликовать"}<ArrowRight size={16}/></button></div>
     </form>
@@ -207,7 +225,9 @@ export function ListingModal({existing,close,submit}:{existing:Listing|null;clos
 
 export function OrderModal({listing:l,close,submit}:{listing:Listing;close:()=>void;submit:(l:Listing,q:number)=>Promise<void>}){const [q,setQ]=useState(1);const [sending,setSending]=useState(false);
   // A double click used to create two reservations for the same listing.
-  const reserve=async()=>{if(sending)return;setSending(true);try{await submit(l,q);}finally{setSending(false);}};return <Modal close={close}><div className="order-preview"><FoodCover title={l.title} category={l.category}/><b>−{disc(l.originalPrice,l.foodSavePrice)}%</b></div><span className="kicker">{l.businessName||"FoodSave Business"}</span><h2>{l.title}</h2><p className="muted">{l.description}</p><div className="details"><span><Clock3 size={14}/> {dt(l.pickupStart)} — {time(l.pickupEnd)}</span><span><MapPin size={14}/> {l.distanceKm!=null?`${l.distanceKm.toFixed(1)} км`:"рядом"}</span><span><Star size={14}/> {l.businessRating?.toFixed(1)||"—"}</span></div><div className="qty"><span>Количество</span><div><button onClick={()=>setQ(Math.max(1,q-1))} disabled={q<=1} aria-label="Меньше">−</button><b key={q}>{q}</b><button onClick={()=>setQ(Math.min(l.quantity,q+1))} disabled={q>=l.quantity} aria-label="Больше">+</button></div></div><div className="checkout"><div><small>Итого</small><b>{money(l.foodSavePrice*q)}</b></div><button className="primary-btn" disabled={sending} onClick={()=>void reserve()}>{sending?"Бронируем…":"Забронировать"} <ArrowRight size={16}/></button></div><div className="note">Сначала бронирование, затем оплата в разделе «Мои заказы».</div></Modal>}
+  const reserve=async()=>{if(sending)return;setSending(true);try{await submit(l,q);}finally{setSending(false);}};return <Modal close={close}><div className="order-preview"><FoodCover title={l.title} category={l.category}/><b>−{disc(l.originalPrice,l.foodSavePrice)}%</b></div><span className="kicker">{l.businessName||"FoodSave Business"}</span><h2>{l.title}</h2><p className="muted">{l.description}</p><div className="details"><span><Clock3 size={14}/> {dt(l.pickupStart)} — {time(l.pickupEnd)}</span><span><MapPin size={14}/> {l.distanceKm!=null?`${l.distanceKm.toFixed(1)} км`:"рядом"}</span><span><Star size={14}/> {l.businessRating?.toFixed(1)||"—"}</span></div>{hasNutrition(l)&&<NutritionFacts n={l}/>}<div className="qty"><span>Количество</span><div><button onClick={()=>setQ(Math.max(1,q-1))} disabled={q<=1} aria-label="Меньше">−</button><b key={q}>{q}</b><button onClick={()=>setQ(Math.min(l.quantity,q+1))} disabled={q>=l.quantity} aria-label="Больше">+</button></div></div><div className="checkout"><div><small>Итого</small><b>{money(l.foodSavePrice*q)}</b></div><button className="primary-btn" disabled={sending} onClick={()=>void reserve()}>{sending?"Бронируем…":"Забронировать"} <ArrowRight size={16}/></button></div><div className="note">Сначала бронирование, затем оплата в разделе «Мои заказы».</div></Modal>}
+/** КБЖУ per 100 g, like on a product page in a grocery app. */
+export function NutritionFacts({n}:{n:Nutrition}){return <div className="nutrition-facts" aria-label="Пищевая ценность на 100 г"><span className="nutrition-title">На 100 г</span>{NUTRITION_FIELDS.map(({key,label,unit})=><div key={key} className={`nutrition-cell ${key}`}><b>{formatNutritionValue(n[key])}</b><small>{key==="calories"?unit:`${label.toLowerCase()}, ${unit}`}</small></div>)}</div>}
 export function QrModal({qr,close}:{qr:string;close:()=>void}){return <Modal close={close}><div className="qr-modal"><span className="kicker">FoodSave QR</span><h2>Покажи QR при получении</h2><p>После сканирования бизнесом заказ станет COMPLETED.</p><div className="qr-box"><img src={qrImg(qr)} alt="Order QR"/></div><code>{qr}</code><button className="ghost-btn full" onClick={()=>navigator.clipboard?.writeText(qr)}><Copy size={15}/> Скопировать</button></div></Modal>}
 export function ReviewModal({order:o,close,submit}:{order:Order;close:()=>void;submit:(o:Order,r:number,c:string)=>Promise<void>}){const [r,setR]=useState(5),[c,setC]=useState("");const [sending,setSending]=useState(false);
   const send=async()=>{if(sending)return;setSending(true);try{await submit(o,r,c.trim());}finally{setSending(false);}};return <Modal close={close}><span className="kicker">Отзыв</span><h2>{o.listingTitle}</h2><div className="stars">{[1,2,3,4,5].map(n=><button key={n} type="button" className={n<=r?"on":""} onClick={()=>setR(n)} aria-label={`Оценка ${n}`}><Star size={30} fill="currentColor"/></button>)}</div><label className="field"><span>Комментарий</span><textarea maxLength={1000} value={c} onChange={e=>setC(e.target.value)} placeholder="Как прошёл заказ?"/></label><button className="primary-btn full" disabled={sending} onClick={()=>void send()}>{sending?"Отправляем…":"Оставить отзыв"}</button></Modal>}
@@ -245,71 +265,6 @@ export function ImpactModal({data,loading,error,completedOrders,foodPoints,onRet
       <button className="ghost-btn" onClick={onRetry} type="button"><RefreshCw size={16}/> Повторить запрос</button>
     </div>}
   </Modal>;
-}
-export function BusinessModal({
-  business: b,
-  city,
-  close,
-  save,
-}: {
-  business: BusinessProfile | null;
-  city: City;
-  close: () => void;
-  save: (data: {
-    businessName: string;
-    description: string;
-    address: string;
-    latitude: number;
-    longitude: number;
-  }) => void;
-}) {
-  const [name, setName] = useState(b?.businessName || "");
-  const [description, setDescription] = useState(b?.description || "");
-  const [address, setAddress] = useState(b?.address || "");
-  const [location, setLocation] = useState<BusinessLocation>(() => {
-    const latitude = b?.latitude;
-    const longitude = b?.longitude;
-    if (
-      typeof latitude === "number" &&
-      typeof longitude === "number" &&
-      Number.isFinite(latitude) &&
-      Number.isFinite(longitude) &&
-      latitude >= -90 && latitude <= 90 &&
-      longitude >= -180 && longitude <= 180
-    ) {
-      return { latitude, longitude };
-    }
-    return null;
-  });
-
-  return (
-    <Modal close={close} wide>
-      <span className="kicker">Business Profile</span>
-      <h2>{b ? "Изменить профиль" : "Создать профиль"}</h2>
-      <p className="muted">Укажи адрес и отметь точное место заведения на карте — покупатели смогут найти его.</p>
-      <form
-        className="form-stack"
-        onSubmit={event => {
-          event.preventDefault();
-          if (!location) return;
-          save({
-            businessName: name,
-            description,
-            address,
-            latitude: location.latitude,
-            longitude: location.longitude,
-          });
-        }}
-      >
-        <Field label="Название бизнеса" value={name} onChange={setName} />
-        <Field label="Описание" value={description} onChange={setDescription} required={false} />
-        <Field label="Адрес" value={address} onChange={setAddress} placeholder="ул. Абая 10" />
-        <BusinessLocationPicker city={city} value={location} onChange={setLocation} />
-        {!location && <p className="business-location-hint">Поставь метку на карте, чтобы сохранить координаты бизнеса.</p>}
-        <button className="primary-btn full" disabled={!location}>Сохранить профиль</button>
-      </form>
-    </Modal>
-  );
 }
 export function ScannerModal({close,scan}:{close:()=>void;scan:(token:string)=>void}) {
   const [value,setValue]=useState("");

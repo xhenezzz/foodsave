@@ -26,4 +26,10 @@ public class UpdateFoodListingRequest {
     private LocalDateTime productExpiresAt;
     private BigDecimal weightKg;
     private FoodCategory category;
+
+    // Optional nutrition facts per 100 g.
+    private BigDecimal calories;
+    private BigDecimal proteins;
+    private BigDecimal fats;
+    private BigDecimal carbs;
 }

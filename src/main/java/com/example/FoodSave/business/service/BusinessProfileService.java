@@ -1,24 +1,30 @@
 package com.example.FoodSave.business.service;
 
 import com.example.FoodSave.auth.cfg.CurrentUser;
-import com.example.FoodSave.auth.cfg.UserPrincipal;
 import com.example.FoodSave.auth.entity.City;
 import com.example.FoodSave.auth.entity.Role;
 import com.example.FoodSave.auth.entity.User;
 import com.example.FoodSave.auth.repo.UserRepository;
+import com.example.FoodSave.business.ai.BusinessApplicationReviewer;
+import com.example.FoodSave.business.dto.BusinessProfileRequest;
 import com.example.FoodSave.business.dto.BusinessProfileResponse;
-import com.example.FoodSave.business.dto.CreateBusinessProfileRequest;
-import com.example.FoodSave.business.dto.UpdateBusinessProfileRequest;
 import com.example.FoodSave.business.entity.BusinessProfile;
 import com.example.FoodSave.business.repo.BusinessProfileRepository;
+import com.example.FoodSave.moderation.ModerationStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Map;
 
+/**
+ * Business profile = business application. A new profile (and a resubmission after
+ * rejection) waits for an administrator; the AI check only adds a recommendation.
+ */
 @Service
 @RequiredArgsConstructor
 public class BusinessProfileService {
@@ -26,6 +32,7 @@ public class BusinessProfileService {
     private final BusinessProfileRepository businessProfileRepository;
     private final UserRepository userRepository;
     private final GeocodingService geocodingService;
+    private final BusinessApplicationReviewer applicationReviewer;
 
     // Same centres and radius the frontend uses to decide a listing's city.
     private static final double MAX_CITY_RADIUS_KM = 90.0;
@@ -33,147 +40,78 @@ public class BusinessProfileService {
             City.ALMATY, new double[]{43.238949, 76.889709},
             City.ASTANA, new double[]{51.169392, 71.449074});
 
+    /** Submits a new business application. */
     @Transactional
-    public BusinessProfileResponse createProfile(
-            CreateBusinessProfileRequest request
-    ) {
-
-        UserPrincipal principal = CurrentUser.get();
-
-        User user =
-                userRepository.findById(principal.getId())
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Пользователь не найден"
-                                )
-                        );
-
+    public BusinessProfileResponse createProfile(BusinessProfileRequest request) {
+        User user = userRepository.findById(CurrentUser.get().getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Пользователь не найден"));
         if (user.getRole() != Role.BUSINESS) {
-            throw new RuntimeException(
-                    "Только BUSINESS может создать профиль бизнеса"
-            );
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Заявку может подать только бизнес-аккаунт");
         }
-
         if (businessProfileRepository.existsByUserId(user.getId())) {
-            throw new RuntimeException(
-                    "Профиль бизнеса уже существует"
-            );
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Заявка уже подана — её можно отредактировать");
         }
-
-        if (user.getCity() == null) {
-            throw new RuntimeException(
-                    "У пользователя не указан город"
-            );
-        }
-
-        BusinessProfile profile =
-                new BusinessProfile();
-
+        BusinessProfile profile = new BusinessProfile();
         profile.setUser(user);
-        profile.setBusinessName(
-                request.getBusinessName()
-        );
-        profile.setDescription(
-                request.getDescription()
-        );
-        profile.setAddress(
-                request.getAddress()
-        );
-
-        GeocodingService.Coordinates coordinates = resolveCoordinates(
-                user.getCity(), request.getAddress(),
-                request.getLatitude(), request.getLongitude());
-
-        profile.setLatitude(
-                coordinates.latitude()
-        );
-
-        profile.setLongitude(
-                coordinates.longitude()
-        );
-
-        BusinessProfile saved =
-                businessProfileRepository.save(profile);
-
-        return toResponse(saved);
+        apply(profile, request);
+        submitForReview(profile);
+        return toResponse(businessProfileRepository.save(profile));
     }
 
     @Transactional(readOnly = true)
     public BusinessProfileResponse getMyProfile() {
-
-        UserPrincipal principal = CurrentUser.get();
-
-        BusinessProfile profile =
-                businessProfileRepository
-                        .findByUserId(principal.getId())
-                        .orElseThrow(() ->
-                                new ResponseStatusException(
-                                        HttpStatus.NOT_FOUND,
-                                        "Профиль бизнеса не найден"
-                                )
-                        );
-
-        return toResponse(profile);
-    }
-
-    @Transactional
-    public BusinessProfileResponse updateProfile(
-            UpdateBusinessProfileRequest request
-    ) {
-
-        UserPrincipal principal = CurrentUser.get();
-
-        BusinessProfile profile =
-                businessProfileRepository
-                        .findByUserId(principal.getId())
-                        .orElseThrow(() ->
-                                new RuntimeException(
-                                        "Профиль бизнеса не найден"
-                                )
-                        );
-
-        User user = profile.getUser();
-
-        if (user.getCity() == null) {
-            throw new RuntimeException(
-                    "У пользователя не указан город"
-            );
-        }
-
-        profile.setBusinessName(
-                request.getBusinessName()
-        );
-
-        profile.setDescription(
-                request.getDescription()
-        );
-
-        profile.setAddress(
-                request.getAddress()
-        );
-
-        // Метка на карте приоритетнее геокодирования адреса. Город берём из User.
-        GeocodingService.Coordinates coordinates = resolveCoordinates(
-                user.getCity(), request.getAddress(),
-                request.getLatitude(), request.getLongitude());
-
-        profile.setLatitude(
-                coordinates.latitude()
-        );
-
-        profile.setLongitude(
-                coordinates.longitude()
-        );
-
-        BusinessProfile updated =
-                businessProfileRepository.save(profile);
-
-        return toResponse(updated);
+        return toResponse(myProfile());
     }
 
     /**
-     * The business owner marks the exact spot on the map; that point used to be
-     * silently discarded and replaced by Nominatim geocoding of the address.
+     * Edits the profile. A pending or rejected application is (re)submitted for review;
+     * an approved business keeps working — its edits are not re-moderated.
+     */
+    @Transactional
+    public BusinessProfileResponse updateProfile(BusinessProfileRequest request) {
+        BusinessProfile profile = myProfile();
+        apply(profile, request);
+        if (profile.getStatus() != ModerationStatus.APPROVED) {
+            submitForReview(profile);
+        }
+        return toResponse(businessProfileRepository.save(profile));
+    }
+
+    private BusinessProfile myProfile() {
+        return businessProfileRepository.findByUserId(CurrentUser.get().getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Профиль бизнеса не найден"));
+    }
+
+    private void apply(BusinessProfile profile, BusinessProfileRequest request) {
+        City city = profile.getUser().getCity();
+        if (city == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "У пользователя не указан город");
+        }
+        profile.setBusinessName(request.getBusinessName().trim());
+        profile.setBusinessType(request.getBusinessType());
+        profile.setDescription(blankToNull(request.getDescription()));
+        profile.setAddress(request.getAddress().trim());
+        profile.setContactPhone(request.getContactPhone().trim());
+        profile.setBin(blankToNull(request.getBin()));
+        GeocodingService.Coordinates coordinates = resolveCoordinates(
+                city, request.getAddress(), request.getLatitude(), request.getLongitude());
+        profile.setLatitude(coordinates.latitude());
+        profile.setLongitude(coordinates.longitude());
+    }
+
+    private void submitForReview(BusinessProfile profile) {
+        profile.setStatus(ModerationStatus.PENDING);
+        profile.setRejectionReason(null);
+        profile.setReviewedAt(null);
+        profile.setSubmittedAt(LocalDateTime.now(ZoneId.of("Asia/Almaty")));
+        BusinessApplicationReviewer.Review review = applicationReviewer.review(profile);
+        profile.setAiVerdict(review.verdict());
+        profile.setAiNotes(review.notesText());
+    }
+
+    /**
+     * The business owner marks the exact spot on the map; without a point the address
+     * is geocoded. The point must lie inside the account's city.
      */
     private GeocodingService.Coordinates resolveCoordinates(
             City city, String address, Double latitude, Double longitude) {
@@ -182,8 +120,7 @@ public class BusinessProfileService {
         }
         if (latitude == null || longitude == null
                 || !Double.isFinite(latitude) || !Double.isFinite(longitude)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Укажи обе координаты метки на карте");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Укажи обе координаты метки на карте");
         }
         double[] center = CITY_CENTERS.get(city);
         if (center != null && distanceKm(latitude, longitude, center[0], center[1]) > MAX_CITY_RADIUS_KM) {
@@ -202,10 +139,11 @@ public class BusinessProfileService {
         return 6371.0 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
-    private BusinessProfileResponse toResponse(
-            BusinessProfile profile
-    ) {
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
 
+    private static BusinessProfileResponse toResponse(BusinessProfile profile) {
         return new BusinessProfileResponse(
                 profile.getId(),
                 profile.getUser().getId(),
@@ -213,7 +151,13 @@ public class BusinessProfileService {
                 profile.getDescription(),
                 profile.getAddress(),
                 profile.getLatitude(),
-                profile.getLongitude()
-        );
+                profile.getLongitude(),
+                profile.getBusinessType(),
+                profile.getContactPhone(),
+                profile.getBin(),
+                profile.getStatus(),
+                profile.getRejectionReason(),
+                profile.getSubmittedAt(),
+                profile.getReviewedAt());
     }
 }

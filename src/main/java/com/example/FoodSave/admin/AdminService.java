@@ -1,5 +1,6 @@
 package com.example.FoodSave.admin;
 
+import com.example.FoodSave.admin.dto.AdminApplicationResponse;
 import com.example.FoodSave.admin.dto.AdminListingResponse;
 import com.example.FoodSave.admin.dto.AdminOrderResponse;
 import com.example.FoodSave.admin.dto.AdminStatsResponse;
@@ -9,6 +10,8 @@ import com.example.FoodSave.auth.entity.Role;
 import com.example.FoodSave.auth.entity.User;
 import com.example.FoodSave.auth.repo.UserRepository;
 import com.example.FoodSave.business.entity.BusinessProfile;
+import com.example.FoodSave.business.repo.BusinessProfileRepository;
+import com.example.FoodSave.moderation.ModerationStatus;
 import com.example.FoodSave.foodlisting.entity.FoodListing;
 import com.example.FoodSave.foodlisting.entity.ListingStatus;
 import com.example.FoodSave.foodlisting.repo.FoodListingRepository;
@@ -48,6 +51,7 @@ public class AdminService {
     private final EntityManager entityManager;
     private final UserRepository userRepository;
     private final FoodListingRepository foodListingRepository;
+    private final BusinessProfileRepository businessProfileRepository;
 
     // ------------------------------------------------------------------ stats
 
@@ -78,7 +82,10 @@ public class AdminService {
                 .getSingleResult()).setScale(2, RoundingMode.HALF_UP);
 
         return new AdminStatsResponse(
-                sum(usersByRole), blocked, usersByRole,
+                sum(usersByRole), blocked,
+                countWhere("SELECT COUNT(b) FROM BusinessProfile b WHERE b.status = :status"),
+                countWhere("SELECT COUNT(l) FROM FoodListing l WHERE l.moderationStatus = :status"),
+                usersByRole,
                 sum(listingsByStatus), listingsByStatus,
                 sum(ordersByStatus), ordersByStatus,
                 revenue, paidOrders,
@@ -184,7 +191,7 @@ public class AdminService {
     // ------------------------------------------------------------------ listings
 
     @Transactional(readOnly = true)
-    public List<AdminListingResponse> listings(String query, ListingStatus status) {
+    public List<AdminListingResponse> listings(String query, ListingStatus status, ModerationStatus moderation) {
         StringBuilder jpql = new StringBuilder(
                 "SELECT l FROM FoodListing l JOIN FETCH l.business b JOIN FETCH b.user u WHERE 1 = 1");
         String pattern = likePattern(query);
@@ -192,12 +199,14 @@ public class AdminService {
             jpql.append(" AND (LOWER(l.title) LIKE :q ESCAPE '!' OR LOWER(b.businessName) LIKE :q ESCAPE '!')");
         }
         if (status != null) jpql.append(" AND l.status = :status");
+        if (moderation != null) jpql.append(" AND l.moderationStatus = :moderation");
         jpql.append(" ORDER BY l.pickupStart DESC");
 
         TypedQuery<FoodListing> q = entityManager.createQuery(jpql.toString(), FoodListing.class)
                 .setMaxResults(MAX_ROWS);
         if (pattern != null) q.setParameter("q", pattern);
         if (status != null) q.setParameter("status", status);
+        if (moderation != null) q.setParameter("moderation", moderation);
         return q.getResultList().stream().map(this::toListing).toList();
     }
 
@@ -211,6 +220,81 @@ public class AdminService {
         }
         listing.setStatus(ListingStatus.CANCELED);
         return toListing(foodListingRepository.save(listing));
+    }
+
+    /** Publishes a listing that was waiting for moderation. */
+    @Transactional
+    public AdminListingResponse approveListing(UUID listingId) {
+        FoodListing listing = lockedListing(listingId);
+        if (listing.getModerationStatus() == ModerationStatus.APPROVED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Объявление уже одобрено");
+        }
+        listing.setModerationStatus(ModerationStatus.APPROVED);
+        listing.setModerationReason(null);
+        return toListing(foodListingRepository.save(listing));
+    }
+
+    /** Hides a listing from customers; the business sees the reason and can resubmit. */
+    @Transactional
+    public AdminListingResponse rejectListing(UUID listingId, String reason) {
+        FoodListing listing = lockedListing(listingId);
+        listing.setModerationStatus(ModerationStatus.REJECTED);
+        listing.setModerationReason(reason.trim());
+        return toListing(foodListingRepository.save(listing));
+    }
+
+    private FoodListing lockedListing(UUID listingId) {
+        return foodListingRepository.findByIdForUpdate(listingId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Объявление не найдено"));
+    }
+
+    // ------------------------------------------------------------------ business applications
+
+    @Transactional(readOnly = true)
+    public List<AdminApplicationResponse> applications(ModerationStatus status) {
+        String jpql = "SELECT b FROM BusinessProfile b JOIN FETCH b.user"
+                + (status != null ? " WHERE b.status = :status" : "")
+                + " ORDER BY b.submittedAt DESC NULLS LAST";
+        TypedQuery<BusinessProfile> q = entityManager.createQuery(jpql, BusinessProfile.class).setMaxResults(MAX_ROWS);
+        if (status != null) q.setParameter("status", status);
+        return q.getResultList().stream().map(AdminService::toApplication).toList();
+    }
+
+    @Transactional
+    public AdminApplicationResponse approveApplication(UUID applicationId) {
+        BusinessProfile application = application(applicationId);
+        if (application.getStatus() == ModerationStatus.APPROVED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Заявка уже одобрена");
+        }
+        application.setStatus(ModerationStatus.APPROVED);
+        application.setRejectionReason(null);
+        application.setReviewedAt(LocalDateTime.now(ZONE));
+        return toApplication(businessProfileRepository.save(application));
+    }
+
+    @Transactional
+    public AdminApplicationResponse rejectApplication(UUID applicationId, String reason) {
+        BusinessProfile application = application(applicationId);
+        application.setStatus(ModerationStatus.REJECTED);
+        application.setRejectionReason(reason.trim());
+        application.setReviewedAt(LocalDateTime.now(ZONE));
+        return toApplication(businessProfileRepository.save(application));
+    }
+
+    private BusinessProfile application(UUID id) {
+        return businessProfileRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Заявка не найдена"));
+    }
+
+    private static AdminApplicationResponse toApplication(BusinessProfile b) {
+        User owner = b.getUser();
+        List<String> notes = b.getAiNotes() == null || b.getAiNotes().isBlank()
+                ? List.of() : List.of(b.getAiNotes().split("\n"));
+        return new AdminApplicationResponse(b.getId(), b.getBusinessName(), b.getBusinessType(), b.getDescription(),
+                b.getAddress(), b.getLatitude(), b.getLongitude(),
+                owner.getCity() == null ? null : owner.getCity().name(),
+                b.getContactPhone(), b.getBin(), owner.getUsername(), owner.getEmail(),
+                b.getStatus(), b.getRejectionReason(), b.getAiVerdict(), notes, b.getSubmittedAt(), b.getReviewedAt());
     }
 
     // ------------------------------------------------------------------ orders
@@ -255,6 +339,12 @@ public class AdminService {
         return counts;
     }
 
+    private long countWhere(String jpql) {
+        return entityManager.createQuery(jpql, Long.class)
+                .setParameter("status", ModerationStatus.PENDING)
+                .getSingleResult();
+    }
+
     private static long sum(Map<String, Long> counts) {
         return counts.values().stream().mapToLong(Long::longValue).sum();
     }
@@ -287,6 +377,7 @@ public class AdminService {
                 b.getUser().getCity() == null ? null : b.getUser().getCity().name(),
                 l.getStatus(), l.getOriginalPrice(), l.getFoodSavePrice(),
                 l.getQuantity() == null ? 0 : l.getQuantity(),
-                l.getPickupStart(), l.getPickupEnd(), l.getExpiresAt());
+                l.getPickupStart(), l.getPickupEnd(), l.getExpiresAt(),
+                l.getModerationStatus(), l.getModerationReason());
     }
 }

@@ -18,6 +18,7 @@ import com.example.FoodSave.order.repository.OrderRepository;
 import com.example.FoodSave.payment.repo.PaymentRepository;
 import com.example.FoodSave.payment.entity.PaymentStatus;
 import com.example.FoodSave.loyalty.LoyaltyService;
+import com.example.FoodSave.moderation.ModerationStatus;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -64,6 +65,7 @@ public class OrderService {
         LocalDateTime now = almatyNow();
 
         if (listing.getStatus() != ListingStatus.ACTIVE
+                || listing.getModerationStatus() != ModerationStatus.APPROVED
                 || listing.getQuantity() < request.getQuantity()
                 || !listing.getExpiresAt().isAfter(now)
                 || !listing.getPickupEnd().isAfter(now)

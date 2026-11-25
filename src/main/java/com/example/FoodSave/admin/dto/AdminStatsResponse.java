@@ -9,6 +9,8 @@ import java.util.Map;
 public record AdminStatsResponse(
         long totalUsers,
         long blockedUsers,
+        long pendingApplications,
+        long pendingListings,
         Map<String, Long> usersByRole,
         long totalListings,
         Map<String, Long> listingsByStatus,

@@ -2,6 +2,7 @@ package com.example.FoodSave.foodlisting.dto;
 
 import com.example.FoodSave.foodlisting.entity.ListingStatus;
 import com.example.FoodSave.foodlisting.entity.FoodCategory;
+import com.example.FoodSave.moderation.ModerationStatus;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 
@@ -42,4 +43,13 @@ public class FoodListingResponse {
     private Double latitude;
     private Double longitude;
     private FoodCategory category;
+
+    private ModerationStatus moderationStatus;
+    private String moderationReason;
+
+    // Nutrition facts per 100 g; null when the seller did not provide them.
+    private BigDecimal calories;
+    private BigDecimal proteins;
+    private BigDecimal fats;
+    private BigDecimal carbs;
 }

@@ -29,6 +29,7 @@ public interface FoodListingRepository extends JpaRepository<FoodListing, UUID> 
             FROM food_listings fl
             JOIN business_profiles bp ON bp.id = fl.business_id
             WHERE fl.status = 'ACTIVE'
+              AND fl.moderation_status = 'APPROVED'
               AND fl.quantity > 0
               AND bp.latitude IS NOT NULL
               AND bp.longitude IS NOT NULL

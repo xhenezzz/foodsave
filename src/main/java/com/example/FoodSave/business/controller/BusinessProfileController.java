@@ -1,8 +1,7 @@
 package com.example.FoodSave.business.controller;
 
 import com.example.FoodSave.business.dto.BusinessProfileResponse;
-import com.example.FoodSave.business.dto.CreateBusinessProfileRequest;
-import com.example.FoodSave.business.dto.UpdateBusinessProfileRequest;
+import com.example.FoodSave.business.dto.BusinessProfileRequest;
 import com.example.FoodSave.business.service.BusinessProfileService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +19,7 @@ public class BusinessProfileController {
 
     @PostMapping
     public ResponseEntity<BusinessProfileResponse> createProfile(
-            @Valid @RequestBody CreateBusinessProfileRequest request
+            @Valid @RequestBody BusinessProfileRequest request
     ) {
 
         return ResponseEntity.ok(
@@ -38,7 +37,7 @@ public class BusinessProfileController {
 
     @PutMapping
     public ResponseEntity<BusinessProfileResponse> updateProfile(
-            @Valid @RequestBody UpdateBusinessProfileRequest request
+            @Valid @RequestBody BusinessProfileRequest request
     ) {
 
         return ResponseEntity.ok(

@@ -94,7 +94,9 @@ public class AiListingService {
                 + "Если продукт нельзя уверенно определить, укажи это в detectedProduct на выбранном языке, "
                 + "используй OTHER и добавь понятное предупреждение на выбранном языке. "
                 + "Название — до 90 символов, описание — до 500 символов, OCR — до 3000 символов. "
-                + "Не включай непроверенные сведения из label в рекламное описание.";
+                + "Не включай непроверенные сведения из label в рекламное описание. "
+                + "calories, proteins, fats, carbs — пищевая ценность НА 100 Г, только числом из таблицы на упаковке "
+                + "(ккал и граммы); если таблицы нет или она указана не на 100 г — пустая строка.";
 
         String prompt = "Создай черновик объявления FoodSave по фотографии.\n"
                 + "Язык названия и описания: " + outputLanguage + ".\n"
@@ -110,9 +112,13 @@ public class AiListingService {
                         "ingredients", string,
                         "allergens", string,
                         "expiryDateText", string,
-                        "storageConditions", string),
+                        "storageConditions", string,
+                        "calories", string,
+                        "proteins", string,
+                        "fats", string,
+                        "carbs", string),
                 "required", List.of("brand", "netWeight", "ingredients", "allergens",
-                        "expiryDateText", "storageConditions"));
+                        "expiryDateText", "storageConditions", "calories", "proteins", "fats", "carbs"));
         Map<String, Object> categorySchema = Map.of(
                 "type", "STRING",
                 "enum", List.of("BAKERY", "READY_MEALS", "DESSERTS", "DAIRY",
@@ -152,7 +158,11 @@ public class AiListingService {
                 optionalText(labelNode, "ingredients", 800),
                 optionalText(labelNode, "allergens", 500),
                 optionalText(labelNode, "expiryDateText", 120),
-                optionalText(labelNode, "storageConditions", 300));
+                optionalText(labelNode, "storageConditions", 300),
+                nutritionValue(labelNode, "calories", 900),
+                nutritionValue(labelNode, "proteins", 100),
+                nutritionValue(labelNode, "fats", 100),
+                nutritionValue(labelNode, "carbs", 100));
 
         List<String> warnings = new ArrayList<>();
         JsonNode warningsNode = result.path("warnings");
@@ -181,7 +191,8 @@ public class AiListingService {
         return new AiListingDraft(detectedProduct, title, description, category, ocrText, label, List.copyOf(warnings));
     }
 
-    private JsonNode generate(String instruction, List<Map<String, Object>> parts,
+    /** Calls Gemini with a JSON response schema. Package-private: shared with BusinessApplicationReviewer. */
+    JsonNode generate(String instruction, List<Map<String, Object>> parts,
                               Map<String, Object> schema, int maxOutputTokens) {
         try {
             byte[] body = mapper.writeValueAsBytes(Map.of(
@@ -240,6 +251,10 @@ public class AiListingService {
         return URI.create(base + model + ":generateContent");
     }
 
+    boolean isConfigured() {
+        return apiKey != null && !apiKey.isBlank() && model != null && model.matches("[A-Za-z0-9._-]{3,90}");
+    }
+
     private void ensureConfigured() {
         if (apiKey == null || apiKey.isBlank()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
@@ -270,6 +285,20 @@ public class AiListingService {
         if (value == null || value.isBlank()) return FoodCategory.OTHER;
         try { return FoodCategory.valueOf(value.trim().toUpperCase(Locale.ROOT)); }
         catch (IllegalArgumentException ex) { return FoodCategory.OTHER; }
+    }
+
+    /** Nutrition value from the label ("250", "12,5 г"); null when absent or out of range. */
+    static Double nutritionValue(JsonNode node, String field, double max) {
+        JsonNode value = node.path(field);
+        if (value.isNumber()) return inRange(value.asDouble(), max);
+        if (!value.isTextual()) return null;
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\\d+(?:[.,]\\d+)?").matcher(value.asText());
+        if (!matcher.find()) return null;
+        return inRange(Double.parseDouble(matcher.group().replace(',', '.')), max);
+    }
+
+    private static Double inRange(double value, double max) {
+        return Double.isFinite(value) && value >= 0 && value <= max ? Math.round(value * 100) / 100.0 : null;
     }
 
     private String requiredText(JsonNode node, String field, int maxLength) {

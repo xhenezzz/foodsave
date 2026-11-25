@@ -86,6 +86,15 @@ class AiListingServiceTest {
         assertEquals(HttpStatus.BAD_GATEWAY,ex.getStatusCode());
     }
 
+    @Test void readsNutritionFromLabelText() throws IOException {
+        var label = new com.fasterxml.jackson.databind.ObjectMapper().readTree(
+                "{\"calories\":\"406 ккал\",\"proteins\":\"8,2 г\",\"fats\":\"\",\"carbs\":\"120\"}");
+        assertEquals(406.0, AiListingService.nutritionValue(label, "calories", 900));
+        assertEquals(8.2, AiListingService.nutritionValue(label, "proteins", 100));
+        assertNull(AiListingService.nutritionValue(label, "fats", 100));
+        assertNull(AiListingService.nutritionValue(label, "carbs", 100), "above 100 g per 100 g is ignored");
+    }
+
     @Test void reportsMissingKey() {
         var service = new AiListingService("", "gemini-test", URI.create("http://localhost/"), HttpClient.newHttpClient());
         var ex=assertThrows(ResponseStatusException.class,

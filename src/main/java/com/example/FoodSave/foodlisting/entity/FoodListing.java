@@ -1,6 +1,7 @@
 package com.example.FoodSave.foodlisting.entity;
 
 import com.example.FoodSave.business.entity.BusinessProfile;
+import com.example.FoodSave.moderation.ModerationStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -68,4 +69,24 @@ public class FoodListing {
     @Column(nullable = false)
     private BigDecimal weightKg;
 
+    /** Only APPROVED listings are shown to customers. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "moderation_status", nullable = false, length = 16)
+    private ModerationStatus moderationStatus = ModerationStatus.PENDING;
+
+    @Column(name = "moderation_reason", length = 500)
+    private String moderationReason;
+
+    // Optional nutrition facts per 100 g, confirmed by the seller.
+    @Column(precision = 7, scale = 2)
+    private BigDecimal calories;
+
+    @Column(precision = 6, scale = 2)
+    private BigDecimal proteins;
+
+    @Column(precision = 6, scale = 2)
+    private BigDecimal fats;
+
+    @Column(precision = 6, scale = 2)
+    private BigDecimal carbs;
 }

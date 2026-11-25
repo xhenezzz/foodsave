@@ -51,3 +51,36 @@ test("модерация и заказы вызывают свои endpoints", a
     "GET http://localhost:8081/api/admin/listings?status=ACTIVE"
   ]);
 });
+
+test("модерация: заявки и объявления одобряются и отклоняются с причиной", async () => {
+  const calls = await capture(async () => {
+    await api.admin.applications("PENDING");
+    await api.admin.approveApplication("b1");
+    await api.admin.rejectApplication("b2", "нет номера дома");
+    await api.admin.listings({moderation: "PENDING"});
+    await api.admin.approveListing("l1");
+    await api.admin.rejectListing("l2", "фото не соответствует");
+  });
+  assert.deepEqual(calls.map(c => `${c.method} ${c.url}`), [
+    "GET http://localhost:8081/api/admin/applications?status=PENDING",
+    "POST http://localhost:8081/api/admin/applications/b1/approve",
+    "POST http://localhost:8081/api/admin/applications/b2/reject",
+    "GET http://localhost:8081/api/admin/listings?moderation=PENDING",
+    "POST http://localhost:8081/api/admin/listings/l1/approve",
+    "POST http://localhost:8081/api/admin/listings/l2/reject"
+  ]);
+  assert.deepEqual(JSON.parse(calls[2].body), { reason: "нет номера дома" });
+  assert.deepEqual(JSON.parse(calls[5].body), { reason: "фото не соответствует" });
+});
+
+test("заявка бизнеса отправляет тип, контакты и точку на карте", async () => {
+  const application = { businessName: "Пекарня Нан", businessType: "BAKERY", description: "", address: "ул. Абая 10",
+    latitude: 43.24, longitude: 76.9, contactPhone: "+77001234567", bin: "" };
+  const calls = await capture(async () => {
+    await api.createBusinessProfile(application);
+    await api.updateBusinessProfile(application);
+  });
+  assert.equal(calls[0].method, "POST");
+  assert.equal(calls[1].method, "PUT");
+  assert.deepEqual(JSON.parse(calls[0].body), application);
+});
