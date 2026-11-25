@@ -69,12 +69,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                 if (jwtService.isTokenValid(jwt, userDetails) && userDetails instanceof UserPrincipal userPrincipal) {
 
-                    boolean emailVerified = userRepository
+                    // Re-read the user on every request: blocking by an admin must take
+                    // effect immediately, not when the JWT expires.
+                    boolean allowed = userRepository
                             .findById(userPrincipal.getId())
-                            .map(User::isEmailVerified)
+                            .map(user -> user.isEmailVerified() && !user.isBlocked())
                             .orElse(false);
 
-                    if(emailVerified){
+                    if(allowed){
                         UsernamePasswordAuthenticationToken authToken =
                                 new UsernamePasswordAuthenticationToken(
                                         userDetails,

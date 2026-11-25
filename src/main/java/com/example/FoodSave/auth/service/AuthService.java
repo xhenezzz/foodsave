@@ -82,6 +82,14 @@ public class AuthService {
         if (!passwordEncoder.matches(loginDto.getPassword(), user.getPassword())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Неверный логин или пароль");
         }
+        if (user.isBlocked()) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Аккаунт заблокирован администратором"
+                            + (user.getBlockedReason() == null || user.getBlockedReason().isBlank()
+                            ? "" : ": " + user.getBlockedReason())
+            );
+        }
         if (!user.isEmailVerified()) {
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,

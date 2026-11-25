@@ -8,12 +8,13 @@ import { AuthModal, BusinessModal, ImpactModal, Landing, ListingModal, OrderModa
 import { DiscoverPage } from "./pages/DiscoverPage";
 import { OrdersPage } from "./pages/OrdersPage";
 import { BusinessPage } from "./pages/BusinessPage";
+import { AdminPage } from "./pages/AdminPage";
 import { EmailVerificationPage } from "./pages/EmailVerificationPage";
 import { ReputationModal } from "./pages/ReputationModal";
 import { StripeCheckoutModal } from "./pages/StripeCheckoutModal";
 import type { StripeCheckoutSession } from "./types";
 
-type Route = "/discover" | "/orders" | "/business";
+type Route = "/discover" | "/orders" | "/business" | "/admin";
 type EmailFlow = "check" | "verify" | null;
 function readEmailFlow(): EmailFlow {
   if (location.pathname === "/check-email") return "check";
@@ -22,11 +23,12 @@ function readEmailFlow(): EmailFlow {
 }
 type Dialog = "profile" | "password" | "listing" | "business" | "order" | "qr" | "review" | "scanner" | "impact" | "reputation" | "stripePayment" | null;
 type ToastValue = {type: "success" | "error"; text: string} | null;
-const roleHome = (profile: Profile): Route => profile.role === "BUSINESS" ? "/business" : "/discover";
+const roleHome = (profile: Profile): Route => profile.role === "ADMIN" ? "/admin" : profile.role === "BUSINESS" ? "/business" : "/discover";
 function readRoute(): Route | null {
   if (location.pathname === "/discover") return "/discover";
   if (location.pathname === "/orders") return "/orders";
   if (location.pathname === "/business") return "/business";
+  if (location.pathname === "/admin") return "/admin";
   return null;
 }
 
@@ -91,7 +93,7 @@ export default function App() {
   useEffect(() => {
     if (!profile || emailFlow) return;
     const target = roleHome(profile);
-    const validRoute = profile.role === "BUSINESS" ? route === "/business" : route === "/discover" || route === "/orders";
+    const validRoute = profile.role === "ADMIN" ? route === "/admin" : profile.role === "BUSINESS" ? route === "/business" : route === "/discover" || route === "/orders";
     if (!validRoute) navigate(target, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.role, route, emailFlow]);
@@ -113,7 +115,10 @@ export default function App() {
         return;
       }
       setProfile(person);
-      if (person.role === "BUSINESS") {
+      if (person.role === "ADMIN") {
+        // The admin panel loads its own data from /api/admin/*.
+        setListings([]); setOrders([]); setBusiness(null); setMyListings([]); setReviews([]); setRating(null);
+      } else if (person.role === "BUSINESS") {
         // Никогда не используем публичный /listings для кабинета бизнеса.
         const [biz, mine, userRating, userReviews] = await Promise.all([
           api.getBusinessProfile().catch(error => {
@@ -467,16 +472,18 @@ export default function App() {
     {toast&&<Toast key={`${toast.type}:${toast.text}`} t={toast}/>}
   </>;
   const isBusiness=profile.role==="BUSINESS";
-  const activeRoute=isBusiness?"/business":route==="/orders"?"/orders":"/discover";
+  const isAdmin=profile.role==="ADMIN";
+  const home=roleHome(profile);
+  const activeRoute:Route=isAdmin?"/admin":isBusiness?"/business":route==="/orders"?"/orders":"/discover";
   const reservedCount=orders.filter(o=>o.status==="RESERVED").length;
   function onNav(event:React.MouseEvent<HTMLAnchorElement>,target:Route){
     if(event.button===0&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey){event.preventDefault();navigate(target);}
   }
   return <div className="app-shell">
     <header className="topbar"><div className="container nav">
-      <a href={isBusiness?"/business":"/discover"} className="brand" onClick={event=>onNav(event,isBusiness?"/business":"/discover")}><span className="brand-mark"><Leaf size={18}/></span>Food<span>Save</span></a>
+      <a href={home} className="brand" onClick={event=>onNav(event,home)}><span className="brand-mark"><Leaf size={18}/></span>Food<span>Save</span></a>
       <nav aria-label="Основная навигация">
-        {isBusiness?<a className={activeRoute==="/business"?"nav-active":""} href="/business" onClick={event=>onNav(event,"/business")}>Кабинет бизнеса</a>:<>
+        {isAdmin?<a className="nav-active" href="/admin" onClick={event=>onNav(event,"/admin")}>Админ-панель</a>:isBusiness?<a className={activeRoute==="/business"?"nav-active":""} href="/business" onClick={event=>onNav(event,"/business")}>Кабинет бизнеса</a>:<>
           <a className={activeRoute==="/discover"?"nav-active":""} href="/discover" onClick={event=>onNav(event,"/discover")}>Предложения</a>
           <a className={activeRoute==="/orders"?"nav-active":""} href="/orders" onClick={event=>onNav(event,"/orders")}>Мои заказы <span className="nav-count" key={reservedCount}>{reservedCount}</span></a>
         </>}
@@ -490,6 +497,7 @@ export default function App() {
     <main key={activeRoute} className="page-transition">
       {!isBusiness&&activeRoute==="/discover"&&<DiscoverPage city={profile.city} listings={customerListings} hiddenUnknown={hiddenUnknown} nearby={nearby} coords={coords} locating={locating} onLocate={locate} onShowAll={()=>void showAllListings()} onOpen={listing=>{setSelected(listing);setDialog("order")}} onOrders={()=>navigate("/orders")}/>}
       {!isBusiness&&activeRoute==="/orders"&&<OrdersPage profile={profile} orders={orders} paidIds={confirmedPaid} payingId={payingId} onPay={pay} onQr={showOrderQr} onReview={order=>{setSelectedOrder(order);setDialog("review")}} onCancel={cancelOrder} onDiscover={()=>navigate("/discover")} onImpact={loadImpact}/>}
+      {isAdmin&&<AdminPage adminId={profile.id} onToast={setToast}/>}
       {isBusiness&&<BusinessPage business={business} listings={myListings} rating={rating} reviewCount={reviews.length} onProfile={()=>setDialog("business")} onCreate={()=>{setSelected(null);setDialog("listing")}} onEdit={listing=>{setSelected(listing);setDialog("listing")}} onCancel={cancelListing} onScanner={()=>setDialog("scanner")}/>}
     </main>
     <footer><div className="container footer"><b>Food<span>Save</span></b><span>Спасение еды — спасение планеты.</span><span>© 2026</span></div></footer>

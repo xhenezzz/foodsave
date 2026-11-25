@@ -91,3 +91,29 @@ export type AiListingDraft = {
 };
 
 export type ListingImage = {id:string;listingId:string;contentUrl:string;sortOrder:number};
+
+// Admin panel — values come from /api/admin/*, never from fixtures.
+export interface AdminStats {
+  totalUsers: number; blockedUsers: number; usersByRole: Record<Role, number>;
+  totalListings: number; listingsByStatus: Record<string, number>;
+  totalOrders: number; ordersByStatus: Record<string, number>;
+  revenue: number; paidOrders: number; foodSavedKg: number; co2SavedKg: number;
+  activity: Array<{date: string; orders: number; revenue: number}>;
+  topBusinesses: Array<{businessName: string; city: City | null; completedOrders: number; revenue: number}>;
+}
+export interface AdminUser {
+  id: string; username: string; email: string; phoneNumber: string; city: City; role: Role;
+  emailVerified: boolean; blocked: boolean; blockedReason: string | null;
+  foodPoints: number; totalOrders: number; completedOrders: number; noShowCount: number;
+  businessName: string | null;
+}
+export interface AdminListing {
+  id: string; title: string; businessName: string; ownerEmail: string; city: City | null; status: ListingStatus;
+  originalPrice: number; foodSavePrice: number; quantity: number;
+  pickupStart: string; pickupEnd: string; expiresAt: string;
+}
+export interface AdminOrder {
+  id: string; customerUsername: string; customerEmail: string; listingTitle: string; businessName: string;
+  quantity: number; totalPrice: number; status: OrderStatus; paymentStatus: PaymentStatus | null;
+  createdAt: string; pickupEnd: string;
+}

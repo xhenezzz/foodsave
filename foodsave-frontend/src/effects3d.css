@@ -1,0 +1,114 @@
+/* =========================================================
+   FoodSave depth layer: 3D tilt, scroll reveal, aurora background,
+   glass surfaces and tactile buttons. Works with effects3d.ts.
+   Everything here is decorative and is switched off for
+   prefers-reduced-motion at the bottom of the file.
+   ========================================================= */
+:root{
+  --depth-shadow:0 1px 0 rgba(255,255,255,.7) inset,0 18px 40px -18px rgba(22,70,45,.35),0 6px 14px -8px rgba(22,70,45,.18);
+  --glow:0 0 0 1px rgba(53,170,112,.18),0 22px 50px -20px rgba(31,140,88,.55);
+}
+
+@keyframes fx-aurora{0%{transform:translate3d(-6%,-4%,0) rotate(0deg) scale(1)}50%{transform:translate3d(5%,4%,0) rotate(18deg) scale(1.12)}100%{transform:translate3d(-6%,-4%,0) rotate(0deg) scale(1)}}
+@keyframes fx-gradient-text{0%{background-position:0% 50%}100%{background-position:200% 50%}}
+@keyframes fx-spin-slow{to{transform:rotate(360deg)}}
+@keyframes fx-cube{0%{transform:rotateX(-24deg) rotateY(0deg)}100%{transform:rotateX(-24deg) rotateY(360deg)}}
+@keyframes fx-orbit{0%{transform:rotateX(72deg) rotateZ(0deg)}100%{transform:rotateX(72deg) rotateZ(360deg)}}
+@keyframes fx-bob3d{0%,100%{transform:translateY(0) rotateX(8deg) rotateY(-10deg)}50%{transform:translateY(-14px) rotateX(-6deg) rotateY(10deg)}}
+@keyframes fx-shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+@keyframes fx-bar-up{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@keyframes fx-flip-in{from{opacity:0;transform:perspective(900px) rotateY(-70deg) translateZ(-60px)}to{opacity:1;transform:perspective(900px) rotateY(0) translateZ(0)}}
+@keyframes fx-donut{from{opacity:0;transform:perspective(700px) rotateX(55deg) scale(.7)}to{opacity:1;transform:perspective(700px) rotateX(0) scale(1)}}
+@keyframes fx-seg{from{opacity:0}to{opacity:1}}
+@keyframes fx-line-glow{0%,100%{opacity:.35}50%{opacity:.9}}
+
+/* ---------- Aurora background ---------- */
+.app-shell,.landing{position:relative;isolation:isolate}
+.app-shell::before,.landing::before{content:"";position:fixed;inset:-20vmax;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(38vmax 32vmax at 12% 18%,rgba(140,214,160,.30),transparent 62%),
+    radial-gradient(34vmax 30vmax at 88% 12%,rgba(221,243,191,.55),transparent 60%),
+    radial-gradient(40vmax 36vmax at 70% 92%,rgba(120,200,175,.22),transparent 62%),
+    radial-gradient(30vmax 26vmax at 20% 88%,rgba(250,220,160,.22),transparent 60%);
+  animation:fx-aurora 26s ease-in-out infinite}
+body{background:#f4f8f4}
+
+/* ---------- Glass surfaces ---------- */
+.topbar{background:rgba(255,255,255,.72);backdrop-filter:blur(22px) saturate(1.5);-webkit-backdrop-filter:blur(22px) saturate(1.5)}
+.topbar::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(46,170,108,.55),transparent);background-size:200% 100%;animation:fx-gradient-text 6s linear infinite}
+.listing-card,.order-card,.business-item,.orders-summary>div,.business-metrics>div,.fs7-kpi,.fs7-card,.recommendation-toolbar,.help-strip,.admin-card,.admin-kpi,.admin-listing{
+  background:linear-gradient(160deg,rgba(255,255,255,.96),rgba(255,255,255,.84));box-shadow:var(--depth-shadow)}
+
+/* ---------- Gradient headline ---------- */
+.hero h1 em,.landing-hero h1 em,.admin-hero h1 em{
+  background:linear-gradient(100deg,#1f8a58 0%,#4cc58a 30%,#1d6f4c 55%,#8bd46a 80%,#1f8a58 100%);background-size:200% 100%;
+  -webkit-background-clip:text;background-clip:text;color:transparent;animation:fx-gradient-text 7s linear infinite}
+
+/* ---------- 3D tilt ([data-tilt], driven by effects3d.ts) ---------- */
+[data-tilt]{position:relative;transform-style:preserve-3d;
+  transition:transform .55s cubic-bezier(.2,.75,.25,1),box-shadow .35s,border-color .35s}
+[data-tilt].is-tilting{
+  transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translate3d(0,-6px,0);
+  transition:transform .09s linear,box-shadow .35s,border-color .35s;box-shadow:var(--glow);z-index:2}
+[data-tilt]::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:3;
+  background:radial-gradient(circle at var(--mx,50%) var(--my,30%),rgba(255,255,255,.55),rgba(255,255,255,0) 52%);
+  opacity:0;transition:opacity .35s;mix-blend-mode:soft-light}
+[data-tilt].is-tilting::after{opacity:1}
+
+/* Hero art becomes a 3D stage: layers sit at different depths and separate while tilting. */
+.hero-art[data-tilt],.landing-art[data-tilt]{overflow:visible}
+.hero-art[data-tilt].is-tilting,.landing-art[data-tilt].is-tilting{transform:perspective(1000px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));box-shadow:none}
+.hero-art[data-tilt]::after,.landing-art[data-tilt]::after{border-radius:36px}
+.hero-orb,.landing-orb{translate:0 0 -40px}
+.hero-food,.landing-food{translate:0 0 55px;transition:translate .5s}
+.floating,.landing-card{translate:0 0 95px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);background:rgba(255,255,255,.82)}
+.hero-food::before,.landing-food::before{content:"";position:absolute;inset:-14px;border-radius:50%;pointer-events:none;
+  background:conic-gradient(from 0deg,transparent 0 70%,rgba(76,197,138,.55) 85%,transparent 100%);
+  -webkit-mask:radial-gradient(circle,transparent 63%,#000 64%,#000 70%,transparent 71%);
+  mask:radial-gradient(circle,transparent 63%,#000 64%,#000 70%,transparent 71%);
+  animation:fx-spin-slow 9s linear infinite}
+.hero-food,.landing-food{position:relative}
+
+/* ---------- Scroll reveal ([data-reveal]) ---------- */
+.fx-reveal [data-reveal]{transform-origin:50% 100%;animation:none;
+  transition:opacity .8s ease,transform .95s cubic-bezier(.2,.75,.25,1)}
+.fx-reveal [data-reveal]:not(.revealed){opacity:0;transform:perspective(1100px) rotateX(16deg) translate3d(0,48px,-40px) scale(.97);animation:none}
+
+/* ---------- Tactile buttons ---------- */
+.primary-btn{background:linear-gradient(180deg,#2c8a5f,#1f6d4b);
+  box-shadow:0 1px 0 rgba(255,255,255,.25) inset,0 4px 0 #134b33,0 12px 24px -10px rgba(19,75,51,.7)}
+.primary-btn:not(:disabled):hover{background:linear-gradient(180deg,#31976a,#217852);transform:translateY(-2px);
+  box-shadow:0 1px 0 rgba(255,255,255,.28) inset,0 6px 0 #134b33,0 18px 30px -12px rgba(19,75,51,.75)}
+.primary-btn:not(:disabled):active{transform:translateY(3px);
+  box-shadow:0 1px 0 rgba(255,255,255,.2) inset,0 1px 0 #134b33,0 6px 12px -8px rgba(19,75,51,.7)}
+.ghost-btn{box-shadow:0 3px 0 #dfe8e1}
+.ghost-btn:not(:disabled):hover{transform:translateY(-1px);box-shadow:0 4px 0 #cfe0d4}
+.ghost-btn:not(:disabled):active{transform:translateY(2px);box-shadow:0 1px 0 #cfe0d4}
+.danger-btn{min-height:43px;padding:0 16px;border:0;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  font-weight:750;color:#fff;background:linear-gradient(180deg,#d9654f,#b8452f);
+  box-shadow:0 1px 0 rgba(255,255,255,.25) inset,0 4px 0 #8a2f20,0 10px 20px -10px rgba(138,47,32,.7);
+  transition:transform .18s cubic-bezier(.34,1.56,.64,1),box-shadow .18s}
+.danger-btn.small{min-height:36px;padding:0 12px;font-size:12px}
+.danger-btn.full{width:100%}
+.danger-btn:not(:disabled):hover{transform:translateY(-2px)}
+.danger-btn:not(:disabled):active{transform:translateY(3px);box-shadow:0 1px 0 #8a2f20}
+
+/* ---------- Brand & nav ---------- */
+.brand-mark{transform-style:preserve-3d;box-shadow:0 6px 14px -6px rgba(28,117,78,.8)}
+.brand:hover .brand-mark{transform:perspective(300px) rotateY(180deg) scale(1.05)}
+.nav nav a.nav-active{box-shadow:0 1px 0 rgba(255,255,255,.8) inset,0 6px 16px -10px rgba(23,104,68,.7)}
+
+/* ---------- Discount badge with depth ---------- */
+.discount{box-shadow:0 6px 14px -6px rgba(30,128,85,.9)}
+.listing-card .circle{box-shadow:0 3px 0 #134b33,0 10px 18px -10px rgba(19,75,51,.8)}
+
+/* ---------- Order preview plate spins in 3D ---------- */
+.order-preview{perspective:600px}
+.order-preview>span{animation:fx-bob3d 5s ease-in-out infinite}
+
+/* ---------- Accessibility ---------- */
+@media (prefers-reduced-motion:reduce){
+  .app-shell::before,.landing::before{animation:none}
+  [data-tilt],[data-tilt].is-tilting{transform:none}
+}

@@ -22,7 +22,7 @@ export function OrdersPage({profile,orders,paidIds,payingId,onPay,onQr,onReview,
   const completed=orders.filter(o=>o.status==="COMPLETED");
   return <section className="section container orders-page">
     <div className="page-head"><div><span className="kicker">Личный кабинет</span><h1>Мои заказы</h1><p>Вся история бронирований, оплата и QR-коды для получения.</p></div><button className="primary-btn" onClick={onDiscover}><ShoppingBag size={17}/> Найти еду <ArrowRight size={16}/></button></div>
-    <div className="orders-summary"><div className="fs-stagger" style={stagger(0)}><PackageCheck size={21}/><b><CountUp value={orders.length}/></b><span>Всего заказов</span></div><div className="fs-stagger" style={stagger(1)}><Clock3 size={21}/><b><CountUp value={active.length}/></b><span>Ожидают получения</span></div><div className="fs-stagger" style={stagger(2)}><CheckCircle2 size={21}/><b><CountUp value={completed.length}/></b><span>Завершено</span></div><div className="fs-stagger" style={stagger(3)}><Leaf size={21}/><b><CountUp value={profile.foodPoints??0}/></b><span>FoodPoints</span></div></div>
+    <div className="orders-summary"><div className="fs-stagger" data-tilt style={stagger(0)}><PackageCheck size={21}/><b><CountUp value={orders.length}/></b><span>Всего заказов</span></div><div className="fs-stagger" data-tilt style={stagger(1)}><Clock3 size={21}/><b><CountUp value={active.length}/></b><span>Ожидают получения</span></div><div className="fs-stagger" data-tilt style={stagger(2)}><CheckCircle2 size={21}/><b><CountUp value={completed.length}/></b><span>Завершено</span></div><div className="fs-stagger" data-tilt style={stagger(3)}><Leaf size={21}/><b><CountUp value={profile.foodPoints??0}/></b><span>FoodPoints</span></div></div>
     <div className="heading"><div><span className="kicker">История покупок</span><h2>Заказы</h2></div><span className="count">{orders.length}</span></div>
     {orders.length===0?<div className="empty-page"><div className="empty"><ShoppingBag size={28}/><h3>Заказов пока нет</h3><p>Выбери первое предложение — заказ появится здесь.</p><button className="primary-btn" onClick={onDiscover}>К предложениям <ArrowRight size={16}/></button></div></div>:<div className="orders-list">{orders.map((o,index)=>{
       const paid=paidIds.has(o.id);
@@ -43,6 +43,6 @@ export function OrdersPage({profile,orders,paidIds,payingId,onPay,onQr,onReview,
         <div className="order-card-total"><span>Сумма</span><b>{money(o.totalPrice)}</b></div>
       </article>;
     })}</div>}
-    <div className="impact-card orders-impact"><div><span className="kicker">Твой вклад</span><h2>Покупки, которые спасают еду.</h2><p>Посмотри, сколько килограммов еды и денег удалось сохранить.</p></div><button className="primary-btn" onClick={onImpact}><Leaf size={17}/> Статистика</button></div>
+    <div className="impact-card orders-impact" data-reveal><div><span className="kicker">Твой вклад</span><h2>Покупки, которые спасают еду.</h2><p>Посмотри, сколько килограммов еды и денег удалось сохранить.</p></div><button className="primary-btn" onClick={onImpact}><Leaf size={17}/> Статистика</button></div>
   </section>;
 }

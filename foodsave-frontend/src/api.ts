@@ -1,4 +1,11 @@
 import type {
+  AdminListing,
+  AdminOrder,
+  AdminStats,
+  AdminUser,
+  ListingStatus,
+  OrderStatus,
+  Role,
   AuthResponse,
   BusinessProfile,
   City,
@@ -395,5 +402,33 @@ export const api = {
 
 
   getMyRating: () =>
-    request<number>("/reviews/my/rating")
+    request<number>("/reviews/my/rating"),
+
+
+  /* =========================================================
+     ADMIN (role ADMIN only; enforced by Spring Security)
+     ========================================================= */
+
+  admin: {
+    stats: () => request<AdminStats>("/admin/stats"),
+    users: (filter: {query?: string; role?: Role | ""} = {}) =>
+      request<AdminUser[]>(`/admin/users${queryString({query: filter.query, role: filter.role})}`),
+    setBlocked: (id: string, blocked: boolean, reason?: string) =>
+      request<AdminUser>(`/admin/users/${id}/blocked`, {method: "PUT", body: JSON.stringify({blocked, reason: reason || null})}),
+    listings: (filter: {query?: string; status?: ListingStatus | ""} = {}) =>
+      request<AdminListing[]>(`/admin/listings${queryString({query: filter.query, status: filter.status})}`),
+    cancelListing: (id: string) =>
+      request<AdminListing>(`/admin/listings/${id}/cancel`, {method: "POST"}),
+    orders: (status?: OrderStatus | "") =>
+      request<AdminOrder[]>(`/admin/orders${queryString({status})}`)
+  }
 };
+
+function queryString(params: Record<string, string | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value && value.trim()) search.set(key, value.trim());
+  }
+  const text = search.toString();
+  return text ? `?${text}` : "";
+}

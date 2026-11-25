@@ -51,5 +51,10 @@ public class User {
     private Integer totalOrders = 0;
     private Integer completedOrders = 0;
     private Integer noShowCount = 0;
+    /** Set by an administrator; blocks login and every request with an existing JWT. */
+    @Column(nullable = false)
+    private boolean blocked;
+    @Column(name = "blocked_reason")
+    private String blockedReason;
 
 }
