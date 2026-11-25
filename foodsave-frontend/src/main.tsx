@@ -5,6 +5,7 @@ import "./App.css";
 import "./production-refresh.css";
 import "./animations.css";
 import "./effects3d.css";
+import "./visuals.css";
 import { installEffects } from "./effects3d";
 
 installEffects();

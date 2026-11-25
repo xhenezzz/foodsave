@@ -1,0 +1,128 @@
+/* =========================================================
+   FoodSave visuals: food covers, illustrations, category colours
+   and warm accents for the customer and business screens.
+   The admin panel keeps its own look (no admin-* selectors here).
+   ========================================================= */
+:root{
+  --sun:#ffc947;
+  --peach:#ff9b5e;
+  --coral:#ff5f6d;
+  --sky:#4fb3e8;
+}
+
+/* ---------- Food covers (listings without a photo) ---------- */
+.food-cover{position:absolute;inset:0;display:grid;place-items:center;overflow:hidden;
+  background:radial-gradient(circle at 30% 25%,rgba(255,255,255,.65),transparent 45%),linear-gradient(145deg,var(--cover-from,#e8f6ec),var(--cover-to,#bfe6cb))}
+.food-cover.compact{position:relative;width:100%;height:100%;border-radius:inherit}
+.food-cover-blob{position:absolute;border-radius:50%;background:rgba(255,255,255,.35)}
+.food-cover-blob.b1{width:58%;aspect-ratio:1;right:-14%;top:-22%}
+.food-cover-blob.b2{width:34%;aspect-ratio:1;left:-8%;bottom:-14%;background:rgba(255,255,255,.25)}
+.food-cover-emoji{position:relative;font-size:86px;line-height:1;filter:drop-shadow(0 14px 14px rgba(60,40,10,.18));transition:transform .45s cubic-bezier(.34,1.56,.64,1)}
+.food-cover.compact .food-cover-emoji{font-size:28px;filter:drop-shadow(0 4px 4px rgba(60,40,10,.18))}
+.listing-card:hover .food-cover-emoji{transform:scale(1.1) rotate(-6deg)}
+.order-preview{overflow:hidden}
+.order-preview .food-cover{border-radius:16px}
+.order-preview .food-cover-emoji{font-size:74px;animation:fx-bob3d 5s ease-in-out infinite}
+.order-preview>b{z-index:1}
+.order-card-symbol,.business-item-avatar{overflow:hidden;padding:0;background:none}
+.business-item-avatar .food-cover-emoji{font-size:34px}
+
+/* ---------- Illustrations ---------- */
+.fs-art{display:block;width:100%;height:auto;overflow:visible}
+.empty-art{width:170px;margin:0 auto 6px}
+.empty svg.empty-art,.business-empty svg.empty-art{animation:fs-float 4s ease-in-out infinite}
+.impact-art{width:120px;flex:0 0 auto;filter:drop-shadow(0 12px 18px rgba(30,90,60,.18))}
+.help-art{width:84px;flex:0 0 auto}
+
+/* ---------- How it works ---------- */
+.how-it-works{margin:44px 0 10px;padding:34px;border-radius:28px;
+  background:linear-gradient(135deg,#fff7e8 0%,#f1fbef 55%,#e9f6ff 100%);border:1px solid #f0e9d8}
+.how-head{text-align:center;margin-bottom:26px}
+.how-head h2{font:800 clamp(24px,3vw,32px) Manrope;letter-spacing:-1.2px;margin:8px 0 0}
+.how-steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:18px;counter-reset:none}
+.how-step{background:rgba(255,255,255,.85);border-radius:22px;padding:18px 20px 22px;text-align:center;box-shadow:0 14px 30px -22px rgba(40,80,50,.45);
+  transition:transform .3s cubic-bezier(.34,1.4,.64,1)}
+.how-step:hover{transform:translateY(-5px)}
+.how-art{position:relative;width:min(190px,100%);margin:0 auto 10px}
+.how-num{position:absolute;left:4px;top:4px;width:34px;height:34px;border-radius:12px;display:grid;place-items:center;font:800 15px Manrope;color:#fff;
+  background:linear-gradient(145deg,var(--peach),var(--coral));box-shadow:0 8px 16px -8px rgba(255,95,109,.9)}
+.how-step:nth-child(2) .how-num{background:linear-gradient(145deg,#4fc58b,#1f8a58);box-shadow:0 8px 16px -8px rgba(31,138,88,.9)}
+.how-step:nth-child(3) .how-num{background:linear-gradient(145deg,#6cc8f5,#2f8fc6);box-shadow:0 8px 16px -8px rgba(47,143,198,.9)}
+.how-step h3{font:800 17px Manrope;margin:4px 0 6px}
+.how-step p{margin:0;color:var(--muted);font-size:13px;line-height:1.55}
+
+/* ---------- Category chips (catalog filter) ---------- */
+.category-chips{display:flex;gap:9px;overflow-x:auto;padding:4px 2px 12px;margin:2px 0 6px;scrollbar-width:thin}
+.category-chip{flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;height:42px;padding:0 14px 0 8px;border-radius:999px;
+  border:1px solid rgba(0,0,0,.05);color:var(--cover-ink,#24553a);font-weight:750;font-size:13px;
+  background:linear-gradient(145deg,var(--cover-from,#eef8f0),var(--cover-to,#d4eedb));box-shadow:0 4px 0 rgba(0,0,0,.05)}
+.category-chip i{font-style:normal;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.75);font-size:16px}
+.category-chip b{font-size:11px;padding:2px 7px;border-radius:99px;background:rgba(255,255,255,.7)}
+.category-chip:hover{transform:translateY(-2px)}
+.category-chip.active{outline:2px solid var(--cover-ink,#1f8a58);outline-offset:2px;box-shadow:0 10px 18px -10px rgba(0,0,0,.35)}
+
+/* ---------- Landing ---------- */
+.landing-categories{text-align:center;padding:52px 0 6px}
+.landing-categories h2,.landing-cta h2{font:800 clamp(26px,3.4vw,36px) Manrope;letter-spacing:-1.4px;margin:8px 0 18px}
+.category-ribbon{display:flex;flex-wrap:wrap;justify-content:center;gap:10px}
+.category-pill{display:inline-flex;align-items:center;gap:8px;padding:8px 16px 8px 8px;border-radius:999px;font-weight:750;font-size:14px;color:var(--cover-ink);
+  background:linear-gradient(145deg,var(--cover-from),var(--cover-to));box-shadow:0 10px 20px -16px rgba(0,0,0,.5);transition:transform .3s cubic-bezier(.34,1.56,.64,1)}
+.category-pill:hover{transform:translateY(-3px) rotate(-2deg)}
+.category-pill i{font-style:normal;font-size:20px;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.75)}
+.audience{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:30px auto 10px}
+.audience-card{display:grid;grid-template-columns:180px 1fr;gap:18px;align-items:center;padding:26px;border-radius:28px;
+  box-shadow:0 20px 40px -28px rgba(40,70,50,.5)}
+.audience-card.customer{background:linear-gradient(140deg,#fff3e3,#ffe0c7)}
+.audience-card.business{background:linear-gradient(140deg,#e9f8ee,#d2f0de)}
+.audience-card h3{font:800 22px Manrope;letter-spacing:-.8px;margin:8px 0 10px}
+.audience-card ul{margin:0 0 16px;padding:0;list-style:none;display:grid;gap:7px;font-size:13px;color:#4d5d52}
+.audience-card li::before{content:"✓";display:inline-grid;place-items:center;width:18px;height:18px;margin-right:8px;border-radius:50%;
+  background:#fff;color:#1f8a58;font-size:11px;font-weight:800}
+.audience-card.customer li::before{color:#e0622b}
+.landing-cta{display:flex;align-items:center;gap:26px;margin:30px auto 64px;padding:28px 34px;border-radius:28px;color:#eaf7ef;
+  background:radial-gradient(circle at 15% 50%,rgba(108,196,240,.35),transparent 40%),linear-gradient(120deg,#164d34,#22744d)}
+.landing-cta h2{color:#fff;margin:0 0 6px;font-size:clamp(22px,2.6vw,30px)}
+.landing-cta p{margin:0;color:#c6e6d2;font-size:14px;max-width:520px}
+.landing-cta>div{flex:1}
+.cta-art{width:130px;flex:0 0 auto}
+
+/* ---------- Business hero ---------- */
+.business-hero{position:relative;margin:6px 0 24px;padding:30px 34px !important;border-radius:28px;overflow:hidden;
+  background:radial-gradient(circle at 92% 0%,rgba(255,201,71,.35),transparent 40%),linear-gradient(120deg,#effaf2 0%,#fff6e6 100%);
+  border:1px solid #eee6d2}
+.business-hero>div:not(.page-head-actions){flex:1;position:relative;z-index:1}
+.business-hero-art{order:2;width:170px;flex:0 0 auto}
+.business-hero .page-head-actions{order:3;flex-direction:column;align-items:stretch}
+
+/* ---------- Warm accents on customer & business screens ---------- */
+.listing-card .discount{background:linear-gradient(135deg,var(--peach),var(--coral));box-shadow:0 8px 16px -8px rgba(255,95,109,.9)}
+.order-preview>b{background:linear-gradient(135deg,var(--peach),var(--coral))}
+.listing-card .available{color:#1f8a58}
+.recommendation-tag{background:linear-gradient(90deg,#fff1d6,#ffe1cc);color:#b4511d}
+.orders-summary>div>svg,.business-metrics>div>svg{width:44px;height:44px;padding:11px;border-radius:14px;background:#e3f5e9;color:#1f8a58}
+.orders-summary>div:nth-child(2)>svg,.business-metrics>div:nth-child(2)>svg{background:#fff1d1;color:#c98a00}
+.orders-summary>div:nth-child(3)>svg,.business-metrics>div:nth-child(3)>svg{background:#e2f3fd;color:#2f8fc6}
+.orders-summary>div:nth-child(4)>svg{background:#ffe7e2;color:#e2553f}
+.hero-art,.landing-art{background:radial-gradient(circle at 78% 18%,rgba(255,201,71,.45),transparent 40%),radial-gradient(circle at 15% 85%,rgba(255,155,94,.28),transparent 40%),linear-gradient(135deg,#e3f4e2,#f6fbe9)}
+.hero-orb,.landing-orb{background:radial-gradient(circle,#d4efc9,#bde5bf)}
+.floating b,.landing-card{color:#1b4733}
+.floating.f1 svg{color:#e0622b}
+.impact-card{background:linear-gradient(120deg,#e4f6df,#fff3dc);align-items:center;justify-content:flex-start}
+.impact-card>div{flex:1}
+.business-bottom-help{background:linear-gradient(120deg,#e8f4ff,#ecf8ef)}
+.empty,.business-empty{background:linear-gradient(160deg,#ffffff,#f7fbf4)}
+
+@media(max-width:900px){
+  .how-steps{grid-template-columns:1fr;max-width:420px;margin:0 auto}
+  .audience{grid-template-columns:1fr}
+  .business-hero-art{display:none}
+  .business-hero .page-head-actions{flex-direction:row}
+}
+@media(max-width:620px){
+  .how-it-works{padding:24px 16px}
+  .audience-card{grid-template-columns:1fr;text-align:center}
+  .audience-card .audience-art{width:160px;margin:0 auto}
+  .audience-card ul{justify-items:center}
+  .landing-cta{flex-direction:column;text-align:center;padding:26px 20px}
+  .impact-art{display:none}
+}
