@@ -4,7 +4,7 @@ import com.example.FoodSave.admin.dto.AdminListingResponse;
 import com.example.FoodSave.admin.dto.AdminOrderResponse;
 import com.example.FoodSave.admin.dto.AdminStatsResponse;
 import com.example.FoodSave.admin.dto.AdminUserResponse;
-import com.example.FoodSave.auth.cfg.UserPrincipal;
+import com.example.FoodSave.auth.cfg.CurrentUser;
 import com.example.FoodSave.auth.entity.Role;
 import com.example.FoodSave.auth.entity.User;
 import com.example.FoodSave.auth.repo.UserRepository;
@@ -20,8 +20,6 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.TypedQuery;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -163,7 +161,7 @@ public class AdminService {
 
     @Transactional
     public AdminUserResponse setBlocked(UUID userId, boolean blocked, String reason) {
-        UUID adminId = currentAdminId();
+        UUID adminId = CurrentUser.get().getId();
         if (adminId.equals(userId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Нельзя заблокировать собственный аккаунт");
         }
@@ -290,13 +288,5 @@ public class AdminService {
                 l.getStatus(), l.getOriginalPrice(), l.getFoodSavePrice(),
                 l.getQuantity() == null ? 0 : l.getQuantity(),
                 l.getPickupStart(), l.getPickupEnd(), l.getExpiresAt());
-    }
-
-    private UUID currentAdminId() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !(auth.getPrincipal() instanceof UserPrincipal principal)) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Требуется авторизация");
-        }
-        return principal.getId();
     }
 }

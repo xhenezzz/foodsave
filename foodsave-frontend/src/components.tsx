@@ -2,9 +2,9 @@ import { useListingCover, PhotoManager } from "./pages/ListingPhotos";
 import { BusinessLocationPicker, type BusinessLocation } from "./BusinessLocationPicker";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowRight, Building2, Camera, CheckCircle2, Clock3, Copy, CreditCard, Leaf, LogOut, MapPin, PackageCheck, Pencil, Plus, QrCode, RefreshCw, ScanLine, ShieldCheck, ShoppingBag, Sparkles, Star, Ticket, Trash2, UserRound, X } from "lucide-react";
+import { ArrowRight, Building2, Camera, CheckCircle2, Clock3, Copy, Leaf, MapPin, RefreshCw, ScanLine, ShieldCheck, ShoppingBag, Sparkles, Star, Ticket, UserRound, X } from "lucide-react";
 import { api } from "./api";
-import type { AiListingDraft, BusinessProfile, City, FoodCategory, FoodSaveQrResponse, Impact, Listing, Order, Profile } from "./types";
+import type { AiListingDraft, BusinessProfile, City, FoodCategory, Impact, Listing, Order, Profile } from "./types";
 import { money, dt, time, disc, qrImg, errText, toLocal, stagger } from "./utils";
 
 type Toast = {type:"success"|"error";text:string}|null;
@@ -30,7 +30,6 @@ export function CountUp({value,duration=900}:{value:number;duration?:number}){
   },[safe,duration]);
   return <>{shown.toLocaleString("ru-RU")}</>;
 }
-export function Stat({v,l}:{v:string;l:string}){return <div className="stat"><b>{v}</b><span>{l}</span></div>}
 export function Empty(){return <div className="empty"><ShoppingBag size={28}/><h3>Пока пусто</h3><p>Активных предложений пока нет.</p></div>}
 function foodEmoji(t:string){const x=t.toLowerCase();if(x.includes("пиц"))return"🍕";if(x.includes("суш"))return"🍣";if(x.includes("бургер"))return"🍔";if(x.includes("коф"))return"☕";if(x.includes("салат"))return"🥗";if(x.includes("хлеб")||x.includes("выпеч"))return"🥐";return"🥡"}
 export function ListingCard({listing:l,onOpen,recommendationReason,index=0}:{listing:Listing;onOpen:()=>void;recommendationReason?:string;index?:number}){const cover=useListingCover(l.id);return <article className="listing-card fs-stagger" data-tilt style={stagger(index)}><div className="listing-image">{cover?<img className="listing-photo" src={cover} alt={l.title}/>:<span className="food-emoji">{foodEmoji(l.title)}</span>}<b className="discount">−{disc(l.originalPrice,l.foodSavePrice)}%</b><span className="available">● {l.status==="ACTIVE"?"Доступно":l.status}</span></div><div className="listing-body">{recommendationReason&&<div className="recommendation-tag"><Sparkles size={12}/>{recommendationReason}</div>}<div className="title-line"><h3>{l.title}</h3><span>×{l.quantity}</span></div><p>{l.description||"Предложение от FoodSave Business"}</p><div className="meta"><span><Building2 size={13}/> {l.businessName||"Бизнес"}</span>{l.businessRating!=null&&<span><Star size={13}/> {l.businessRating.toFixed(1)}</span>}{l.distanceKm!=null&&<span><MapPin size={13}/> {l.distanceKm.toFixed(1)} км</span>}</div><div className="pickup"><Clock3 size={14}/> {dt(l.pickupStart)} — {time(l.pickupEnd)}</div><div className="price"><div><del>{money(l.originalPrice)}</del><b>{money(l.foodSavePrice)}</b></div><button className="circle" disabled={l.status!=="ACTIVE"} onClick={onOpen} aria-label={`Открыть предложение ${l.title}`}><ArrowRight size={18}/></button></div></div></article>}

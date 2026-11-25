@@ -1,7 +1,6 @@
 package com.example.FoodSave.auth.jwt;
 
 import com.example.FoodSave.auth.cfg.UserPrincipal;
-import com.example.FoodSave.auth.entity.User;
 import com.example.FoodSave.auth.repo.UserRepository;
 import com.example.FoodSave.auth.service.JwtService;
 import jakarta.servlet.FilterChain;

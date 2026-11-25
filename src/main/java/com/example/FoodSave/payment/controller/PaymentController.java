@@ -4,7 +4,6 @@ import com.example.FoodSave.payment.dto.PaymentResponse;
 import com.example.FoodSave.payment.service.StripePaymentService;
 import com.example.FoodSave.payment.dto.StripeCheckoutSessionResponse;
 import org.springframework.http.MediaType;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;

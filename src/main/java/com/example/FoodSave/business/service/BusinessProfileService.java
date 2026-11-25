@@ -1,5 +1,6 @@
 package com.example.FoodSave.business.service;
 
+import com.example.FoodSave.auth.cfg.CurrentUser;
 import com.example.FoodSave.auth.cfg.UserPrincipal;
 import com.example.FoodSave.auth.entity.City;
 import com.example.FoodSave.auth.entity.Role;
@@ -12,7 +13,6 @@ import com.example.FoodSave.business.entity.BusinessProfile;
 import com.example.FoodSave.business.repo.BusinessProfileRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -38,8 +38,7 @@ public class BusinessProfileService {
             CreateBusinessProfileRequest request
     ) {
 
-        UserPrincipal principal =
-                getCurrentUserPrincipal();
+        UserPrincipal principal = CurrentUser.get();
 
         User user =
                 userRepository.findById(principal.getId())
@@ -102,8 +101,7 @@ public class BusinessProfileService {
     @Transactional(readOnly = true)
     public BusinessProfileResponse getMyProfile() {
 
-        UserPrincipal principal =
-                getCurrentUserPrincipal();
+        UserPrincipal principal = CurrentUser.get();
 
         BusinessProfile profile =
                 businessProfileRepository
@@ -123,8 +121,7 @@ public class BusinessProfileService {
             UpdateBusinessProfileRequest request
     ) {
 
-        UserPrincipal principal =
-                getCurrentUserPrincipal();
+        UserPrincipal principal = CurrentUser.get();
 
         BusinessProfile profile =
                 businessProfileRepository
@@ -203,15 +200,6 @@ public class BusinessProfileService {
                 + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
                 * Math.sin(dLon / 2) * Math.sin(dLon / 2);
         return 6371.0 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
-
-    private UserPrincipal getCurrentUserPrincipal() {
-
-        return (UserPrincipal)
-                SecurityContextHolder
-                        .getContext()
-                        .getAuthentication()
-                        .getPrincipal();
     }
 
     private BusinessProfileResponse toResponse(

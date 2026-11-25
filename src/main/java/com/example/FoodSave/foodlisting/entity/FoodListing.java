@@ -1,6 +1,5 @@
 package com.example.FoodSave.foodlisting.entity;
 
-import com.example.FoodSave.auth.entity.User;
 import com.example.FoodSave.business.entity.BusinessProfile;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;

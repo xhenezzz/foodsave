@@ -1,5 +1,6 @@
 package com.example.FoodSave.foodlisting.service;
 
+import com.example.FoodSave.auth.cfg.CurrentUser;
 import com.example.FoodSave.auth.cfg.UserPrincipal;
 import com.example.FoodSave.business.entity.BusinessProfile;
 import com.example.FoodSave.business.repo.BusinessProfileRepository;
@@ -13,10 +14,8 @@ import com.example.FoodSave.foodlisting.repo.FoodListingRepository;
 import com.example.FoodSave.review.repo.ReviewRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Comparator;
@@ -35,11 +34,7 @@ public class FoodListingService {
             CreateFoodListingRequest request
     ) {
 
-        UserPrincipal userPrincipal =
-                (UserPrincipal) SecurityContextHolder
-                        .getContext()
-                        .getAuthentication()
-                        .getPrincipal();
+        UserPrincipal userPrincipal = CurrentUser.get();
 
         // Получаем BusinessProfile текущего пользователя
         BusinessProfile businessProfile =
@@ -115,12 +110,7 @@ public class FoodListingService {
         return toResponse(savedListing);
     }
 
-    /** Backward-compatible old endpoint: does not filter city. */
-    public List<FoodListingResponse> getActiveListings() {
-        return getActiveListings(null);
-    }
-
-    /** Pass city from controller: /api/listings?city=ALMATY. */
+    /** Catalogue: /api/listings?city=ALMATY (city is optional). */
     @Transactional
     public List<FoodListingResponse> getActiveListings(String city) {
 
@@ -155,11 +145,7 @@ public class FoodListingService {
 
     public List<FoodListingResponse> getMyListings() {
 
-        UserPrincipal userPrincipal =
-                (UserPrincipal) SecurityContextHolder
-                        .getContext()
-                        .getAuthentication()
-                        .getPrincipal();
+        UserPrincipal userPrincipal = CurrentUser.get();
 
         // User.id -> BusinessProfile. A business without a profile simply has no listings yet;
         // failing here broke the whole business dashboard for freshly registered accounts.
@@ -186,11 +172,7 @@ public class FoodListingService {
             UpdateFoodListingRequest request
     ) {
 
-        UserPrincipal userPrincipal =
-                (UserPrincipal) SecurityContextHolder
-                        .getContext()
-                        .getAuthentication()
-                        .getPrincipal();
+        UserPrincipal userPrincipal = CurrentUser.get();
 
         // Same pessimistic row lock as createOrder(); protects available stock.
         FoodListing listing = foodListingRepository.findByIdForUpdate(id)
@@ -244,11 +226,7 @@ public class FoodListingService {
     @Transactional
     public void cancelListing(UUID id) {
 
-        UserPrincipal userPrincipal =
-                (UserPrincipal) SecurityContextHolder
-                        .getContext()
-                        .getAuthentication()
-                        .getPrincipal();
+        UserPrincipal userPrincipal = CurrentUser.get();
 
         FoodListing listing =
                 foodListingRepository.findByIdForUpdate(id)
@@ -284,13 +262,7 @@ public class FoodListingService {
         foodListingRepository.save(listing);
     }
 
-    /** Backward-compatible method. */
-    public List<FoodListingResponse> getNearbyListings(
-            double latitude, double longitude, double radius) {
-        return getNearbyListings(latitude, longitude, radius, null);
-    }
-
-    /** Pass city from controller: /api/listings/nearby?...&city=ALMATY. */
+    /** Listings within `radius` km: /api/listings/nearby?...&city=ALMATY (city is optional). */
     @Transactional
     public List<FoodListingResponse> getNearbyListings(
             double latitude, double longitude, double radius, String city) {
@@ -314,24 +286,15 @@ public class FoodListingService {
                 .stream()
                 .filter(listing -> isAvailable(listing, now))
                 .filter(listing -> matchesCity(listing, city))
-                .map(listing ->
-                        toNearbyResponse(
-                                listing,
-                                latitude,
-                                longitude
-                        )
-                )
+                .map(listing -> toResponse(listing, distanceKm(latitude, longitude,
+                        listing.getBusiness().getLatitude(), listing.getBusiness().getLongitude())))
                 .sorted(Comparator.comparingDouble(
                         FoodListingResponse::getRecommendationScore
                 ).reversed())
                 .toList();
     }
 
-    /** City is read from BusinessProfile -> User -> city.
-     * Null city means the legacy unfiltered method, for compatibility.
-     * NOTE: controller must authorize CUSTOMER and optionally derive city from JWT,
-     * rather than relying on a query parameter for any security-sensitive rule.
-     */
+    /** City is read from BusinessProfile -> User -> city; a blank filter matches everything. */
     private boolean matchesCity(FoodListing listing, String city) {
         if (city == null || city.isBlank()) return true;
         return listing.getBusiness() != null
@@ -352,39 +315,21 @@ public class FoodListingService {
                 && listing.getPickupEnd().isAfter(now);
     }
 
-    private FoodListingResponse toNearbyResponse(
-            FoodListing listing,
-            double userLatitude,
-            double userLongitude
-    ) {
+    private FoodListingResponse toResponse(FoodListing listing) {
+        return toResponse(listing, null); // no buyer location -> distance is not scored
+    }
 
-        BusinessProfile businessProfile =
-                listing.getBusiness();
-
-        Double rating =
-                reviewRepository.getAverageRating(
-                        businessProfile.getId()
-                );
-
-        if (rating == null) {
-            rating = 0.0;
-        }
-
-        double distance =
-                calculateDistance(
-                        userLatitude,
-                        userLongitude,
-                        businessProfile.getLatitude(),
-                        businessProfile.getLongitude()
-                );
+    private FoodListingResponse toResponse(FoodListing listing, Double distanceKm) {
+        BusinessProfile business = listing.getBusiness();
+        Double average = reviewRepository.getAverageRating(business.getId());
+        double rating = average == null ? 0.0 : average;
 
         double recommendationScore = RecommendationScorer.calculate(
                 listing.getOriginalPrice(),
                 listing.getFoodSavePrice(),
                 listing.getQuantity(),
                 rating,
-                distance
-        );
+                distanceKm);
 
         return new FoodListingResponse(
                 listing.getId(),
@@ -400,104 +345,24 @@ public class FoodListingService {
                 listing.getExpiresAt(),
                 listing.getProductExpiresAt(),
                 listing.getStatus(),
-                businessProfile.getBusinessName(),
-                businessProfile.getUser().getCity() == null ? null : businessProfile.getUser().getCity().name(),
+                business.getBusinessName(),
+                business.getUser().getCity() == null ? null : business.getUser().getCity().name(),
                 Math.round(rating * 10.0) / 10.0,
-                Math.round(distance * 10.0) / 10.0,
+                distanceKm == null ? null : Math.round(distanceKm * 10.0) / 10.0,
                 recommendationScore,
-                businessProfile.getLatitude(),
-                businessProfile.getLongitude(),
+                business.getLatitude(),
+                business.getLongitude(),
                 listing.getCategory()
         );
     }
 
-    private double calculateDistance(
-            double userLatitude,
-            double userLongitude,
-            double businessLatitude,
-            double businessLongitude
-    ) {
-
-        final double earthRadius = 6371.0;
-
-        double latDistance =
-                Math.toRadians(
-                        businessLatitude - userLatitude
-                );
-
-        double lonDistance =
-                Math.toRadians(
-                        businessLongitude - userLongitude
-                );
-
-        double a =
-                Math.sin(latDistance / 2)
-                        * Math.sin(latDistance / 2)
-
-                        + Math.cos(
-                        Math.toRadians(userLatitude)
-                )
-                        * Math.cos(
-                        Math.toRadians(businessLatitude)
-                )
-                        * Math.sin(lonDistance / 2)
-                        * Math.sin(lonDistance / 2);
-
-        double c =
-                2 * Math.atan2(
-                        Math.sqrt(a),
-                        Math.sqrt(1 - a)
-                );
-
-        return earthRadius * c;
-    }
-
-    private FoodListingResponse toResponse(
-            FoodListing listing
-    ) {
-
-        BusinessProfile businessProfile =
-                listing.getBusiness();
-
-        Double rating =
-                reviewRepository.getAverageRating(
-                        businessProfile.getId()
-                );
-
-        if (rating == null) {
-            rating = 0.0;
-        }
-
-        double recommendationScore = RecommendationScorer.calculate(
-                listing.getOriginalPrice(),
-                listing.getFoodSavePrice(),
-                listing.getQuantity(),
-                rating,
-                null // Нет местоположения покупателя -> не учитываем расстояние
-        );
-
-        return new FoodListingResponse(
-                listing.getId(),
-                listing.getTitle(),
-                listing.getDescription(),
-                listing.getOriginalPrice(),
-                listing.getFoodSavePrice(),
-                listing.getQuantity(),
-                listing.getWeightKg(),
-                listing.getVersion(),
-                listing.getPickupStart(),
-                listing.getPickupEnd(),
-                listing.getExpiresAt(),
-                listing.getProductExpiresAt(),
-                listing.getStatus(),
-                businessProfile.getBusinessName(),
-                businessProfile.getUser().getCity() == null ? null : businessProfile.getUser().getCity().name(),
-                Math.round(rating * 10.0) / 10.0,
-                null,
-                recommendationScore,
-                businessProfile.getLatitude(),
-                businessProfile.getLongitude(),
-                listing.getCategory()
-        );
+    /** Great-circle distance (haversine), km. */
+    private static double distanceKm(double lat1, double lon1, double lat2, double lon2) {
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLon = Math.toRadians(lon2 - lon1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        return 6371.0 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 }

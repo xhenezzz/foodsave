@@ -21,8 +21,6 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
 
     List<Order> findByStatusAndExpiresAtBefore(OrderStatus status, LocalDateTime now);
 
-    Optional<Order> findByQrToken(String qrToken);
-
     List<Order> findByStatusAndPickupEndBefore(OrderStatus status, LocalDateTime time);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

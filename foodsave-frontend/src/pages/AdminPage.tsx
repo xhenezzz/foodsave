@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { api } from "../api";
 import { CountUp } from "../components";
-import type { AdminListing, AdminOrder, AdminStats, AdminUser, ListingStatus, OrderStatus, Role } from "../types";
+import type { AdminListing, AdminStats, AdminUser, ListingStatus, OrderStatus, Role } from "../types";
 import { cityName, dt, errText, money, stagger } from "../utils";
 import "./AdminPage.css";
 

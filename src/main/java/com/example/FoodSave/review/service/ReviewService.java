@@ -1,5 +1,6 @@
 package com.example.FoodSave.review.service;
 
+import com.example.FoodSave.auth.cfg.CurrentUser;
 import com.example.FoodSave.auth.cfg.UserPrincipal;
 import com.example.FoodSave.auth.entity.User;
 import com.example.FoodSave.auth.repo.UserRepository;
@@ -13,7 +14,6 @@ import com.example.FoodSave.review.dto.ReviewResponse;
 import com.example.FoodSave.review.entity.Review;
 import com.example.FoodSave.review.repo.ReviewRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,11 +32,7 @@ public class ReviewService {
     @Transactional
     public ReviewResponse createReview(CreateReviewRequest request) {
 
-        UserPrincipal userPrincipal =
-                (UserPrincipal) SecurityContextHolder
-                        .getContext()
-                        .getAuthentication()
-                        .getPrincipal();
+        UserPrincipal userPrincipal = CurrentUser.get();
 
         Order order = orderRepository.findById(request.getOrderId())
                 .orElseThrow(() ->
@@ -108,11 +104,7 @@ public class ReviewService {
     @Transactional(readOnly = true)
     public List<ReviewResponse> getMyReviews() {
 
-        UserPrincipal userPrincipal =
-                (UserPrincipal) SecurityContextHolder
-                        .getContext()
-                        .getAuthentication()
-                        .getPrincipal();
+        UserPrincipal userPrincipal = CurrentUser.get();
 
         BusinessProfile businessProfile =
                 businessProfileRepository
@@ -136,11 +128,7 @@ public class ReviewService {
     @Transactional(readOnly = true)
     public Double getMyRating() {
 
-        UserPrincipal userPrincipal =
-                (UserPrincipal) SecurityContextHolder
-                        .getContext()
-                        .getAuthentication()
-                        .getPrincipal();
+        UserPrincipal userPrincipal = CurrentUser.get();
 
         BusinessProfile businessProfile =
                 businessProfileRepository

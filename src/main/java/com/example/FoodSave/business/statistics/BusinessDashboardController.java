@@ -1,13 +1,12 @@
 package com.example.FoodSave.business.statistics;
 
+import com.example.FoodSave.auth.cfg.CurrentUser;
 import com.example.FoodSave.auth.cfg.UserPrincipal;
 import com.example.FoodSave.auth.entity.Role;
 import com.example.FoodSave.auth.entity.User;
 import com.example.FoodSave.auth.repo.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -23,10 +22,7 @@ public class BusinessDashboardController {
 
     @GetMapping
     public BusinessDashboardResponse get(@RequestParam(defaultValue = "30") int days) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !(auth.getPrincipal() instanceof UserPrincipal principal)) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authorization required");
-        }
+        UserPrincipal principal = CurrentUser.get();
         User user = userRepository.findById(principal.getId()).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"));
         if (user.getRole() != Role.BUSINESS) {

@@ -1,11 +1,11 @@
 package com.example.FoodSave.impact.service;
 
+import com.example.FoodSave.auth.cfg.CurrentUser;
 import com.example.FoodSave.auth.cfg.UserPrincipal;
 import com.example.FoodSave.impact.dto.ImpactResponse;
 import com.example.FoodSave.order.entity.Order;
 import com.example.FoodSave.order.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,8 +24,7 @@ public class ImpactService {
 
     @Transactional(readOnly = true)
     public ImpactResponse getMyImpact() {
-        UserPrincipal principal = (UserPrincipal) SecurityContextHolder.getContext()
-                .getAuthentication().getPrincipal();
+        UserPrincipal principal = CurrentUser.get();
         List<Order> completed = orderRepository.findCompletedOrdersByUserId(principal.getId());
 
         BigDecimal foodSavedKg = BigDecimal.ZERO;

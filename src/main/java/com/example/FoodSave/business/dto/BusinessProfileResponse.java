@@ -1,6 +1,5 @@
 package com.example.FoodSave.business.dto;
 
-import com.example.FoodSave.auth.entity.City;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 

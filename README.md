@@ -331,7 +331,7 @@ Frontend показывает `message` в уведомлении, а HTTP-ст�
 Backend (из корня, нужен JDK):
 
 ```powershell
-.\mvnw.cmd test               # 47 тестов: правила объявлений, лояльность, Stripe, AI, админка, контекст Spring
+.\mvnw.cmd test               # 51 тест: правила объявлений, рекомендации, лояльность, Stripe, AI, админка, контекст Spring
 .\mvnw.cmd -DskipTests package
 ```
 
@@ -341,7 +341,7 @@ Frontend (в `foodsave-frontend`):
 
 ```bash
 npm test          # Тесты Node.js (Node 22+)
-npx tsc -b        # Проверка типов
+npx tsc -b        # Проверка типов (неиспользуемые импорты и переменные — ошибка)
 npm run build     # Production-сборка в dist/
 npm run preview   # Просмотр production-сборки
 ```

@@ -1,5 +1,6 @@
 package com.example.FoodSave.foodlisting.images;
 
+import com.example.FoodSave.auth.cfg.CurrentUser;
 import com.example.FoodSave.auth.cfg.UserPrincipal;
 import com.example.FoodSave.auth.entity.Role;
 import com.example.FoodSave.auth.repo.UserRepository;
@@ -12,8 +13,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
@@ -92,9 +91,7 @@ public class ListingImageService {
     }
 
     private FoodListing ownedListing(UUID listingId) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !(auth.getPrincipal() instanceof UserPrincipal principal))
-            throw error(HttpStatus.UNAUTHORIZED, "Нужна авторизация");
+        UserPrincipal principal = CurrentUser.get();
         var user = users.findById(principal.getId())
                 .orElseThrow(() -> error(HttpStatus.UNAUTHORIZED, "Пользователь не найден"));
         if (user.getRole() != Role.BUSINESS) throw error(HttpStatus.FORBIDDEN, "Только бизнес может загружать фото");

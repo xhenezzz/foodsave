@@ -1,5 +1,6 @@
 package com.example.FoodSave.profile.service;
 
+import com.example.FoodSave.auth.cfg.CurrentUser;
 import com.example.FoodSave.auth.cfg.UserPrincipal;
 import com.example.FoodSave.auth.entity.User;
 import com.example.FoodSave.auth.repo.UserRepository;
@@ -8,7 +9,6 @@ import com.example.FoodSave.profile.dto.FoodSaveQrResponse;
 import com.example.FoodSave.profile.dto.ProfileResponse;
 import com.example.FoodSave.profile.dto.UpdateProfileRequest;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -43,11 +43,7 @@ public class ProfileService {
     }
 
     public ProfileResponse getMyProfile(){
-        UserPrincipal userPrincipal =
-                (UserPrincipal) SecurityContextHolder
-                        .getContext()
-                        .getAuthentication()
-                        .getPrincipal();
+        UserPrincipal userPrincipal = CurrentUser.get();
 
         User user = repository.findById(userPrincipal.getId())
                 .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
@@ -76,11 +72,7 @@ public class ProfileService {
 
     public ProfileResponse updateProfile(UpdateProfileRequest request) {
 
-        UserPrincipal userPrincipal =
-                (UserPrincipal) SecurityContextHolder
-                        .getContext()
-                        .getAuthentication()
-                        .getPrincipal();
+        UserPrincipal userPrincipal = CurrentUser.get();
 
         User user = repository.findById(userPrincipal.getId())
                 .orElseThrow(() -> new RuntimeException("Пользователь не найден!"));
@@ -106,11 +98,7 @@ public class ProfileService {
 
     public void changePassword(ChangePasswordRequest request) {
 
-        UserPrincipal userPrincipal =
-                (UserPrincipal) SecurityContextHolder
-                        .getContext()
-                        .getAuthentication()
-                        .getPrincipal();
+        UserPrincipal userPrincipal = CurrentUser.get();
 
         User user = repository.findById(userPrincipal.getId())
                 .orElseThrow(() -> new RuntimeException("Пользователь не найден!"));
@@ -131,11 +119,7 @@ public class ProfileService {
 
     public FoodSaveQrResponse getFoodSaveQr() {
 
-        UserPrincipal userPrincipal =
-                (UserPrincipal) SecurityContextHolder
-                        .getContext()
-                        .getAuthentication()
-                        .getPrincipal();
+        UserPrincipal userPrincipal = CurrentUser.get();
 
         User user = repository.findById(userPrincipal.getId())
                 .orElseThrow(() -> new RuntimeException("Пользователь не найден!"));

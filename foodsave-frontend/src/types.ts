@@ -79,7 +79,6 @@ export type BusinessDashboard = {
   topProducts: Array<{listingId: string; title: string; quantitySold: number; completedOrders: number; revenue: number}>;
 };
 
-export type AiListingSuggestion = {title:string;description:string;suggestedCategory:string};
 export type AiListingDraft = {
   detectedProduct: string;
   title: string;

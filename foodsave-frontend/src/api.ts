@@ -9,12 +9,10 @@ import type {
   AuthResponse,
   BusinessProfile,
   City,
-  FoodSaveQrResponse,
   Impact,
   Listing,
   Loyalty,
   BusinessDashboard,
-  AiListingSuggestion,
   AiListingDraft,
   FoodCategory,
   ListingImage,
@@ -118,11 +116,6 @@ export const api = {
     return response.blob();
   },
 
-  suggestAiListing: (data: {productName:string; details:string; language:"ru"|"kk"|"en"}) =>
-    request<AiListingSuggestion>("/business/ai-listing/suggest", {
-      method: "POST", body: JSON.stringify(data)
-    }),
-
   analyzeAiListing: (image:File, language:"ru"|"kk"|"en", notes:string) => {
     const data = new FormData();
     data.append("image", image);
@@ -178,10 +171,6 @@ export const api = {
     request<Loyalty>("/loyalty/me"),
 
 
-  getQr: () =>
-    request<FoodSaveQrResponse>("/profile/qr"),
-
-
   updateProfile: (data: {
     email: string;
     phoneNumber: string;
@@ -220,10 +209,6 @@ export const api = {
     request<Listing[]>(
       `/listings/nearby?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&radius=${encodeURIComponent(radius)}${city ? `&city=${encodeURIComponent(city)}` : ""}`
     ),
-
-
-  getListing: (id: string) =>
-    request<Listing>(`/listings/${id}`),
 
 
   getMyListings: () =>
@@ -333,10 +318,6 @@ export const api = {
     request<Order[]>("/orders/my"),
 
 
-  getOrder: (id: string) =>
-    request<Order>(`/orders/${id}`),
-
-
   cancelOrder: (id: string) =>
     request<void>(`/orders/${id}`, {
       method: "DELETE"
@@ -360,14 +341,6 @@ export const api = {
      PAYMENT
      ========================================================= */
 
-  // Legacy demo endpoints are retained for compatibility with existing local tests/data.
-  // The customer-facing app now uses Stripe Embedded Checkout below.
-  startDemoPayment: (orderId: string) =>
-    request<Payment>(`/payments/${orderId}/demo/start`, {method:"POST"}),
-  confirmDemoPayment: (orderId: string, decision: "APPROVE" | "DECLINE") =>
-    request<Payment>(`/payments/${orderId}/demo/confirm`, {
-      method:"POST", body:JSON.stringify({decision})
-    }),
   startStripeCheckout: (orderId: string) =>
     request<StripeCheckoutSession>(`/payments/${orderId}/stripe/checkout-session`, {method:"POST"}),
   getPaymentStatus: (orderId: string) =>

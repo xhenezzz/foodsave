@@ -1,5 +1,6 @@
 package com.example.FoodSave.order.service;
 
+import com.example.FoodSave.auth.cfg.CurrentUser;
 import com.example.FoodSave.auth.cfg.UserPrincipal;
 import com.example.FoodSave.auth.entity.Role;
 import com.example.FoodSave.auth.entity.User;
@@ -22,7 +23,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -43,7 +43,7 @@ public class OrderService {
 
     @Transactional
     public OrderResponse createOrder(CreateOrderRequest request) {
-        UserPrincipal principal = currentUser();
+        UserPrincipal principal = CurrentUser.get();
         if (principal.getRole() != Role.CUSTOMER) {
             throw new IllegalStateException("Только покупатель может создавать заказы");
         }
@@ -102,11 +102,7 @@ public class OrderService {
 
     public List<OrderResponse> getMyOrders() {
 
-        UserPrincipal userPrincipal =
-                (UserPrincipal) SecurityContextHolder
-                        .getContext()
-                        .getAuthentication()
-                        .getPrincipal();
+        UserPrincipal userPrincipal = CurrentUser.get();
 
         List<Order> orders =
                 orderRepository
@@ -123,11 +119,7 @@ public class OrderService {
             UUID id
     ) {
 
-        UserPrincipal userPrincipal =
-                (UserPrincipal) SecurityContextHolder
-                        .getContext()
-                        .getAuthentication()
-                        .getPrincipal();
+        UserPrincipal userPrincipal = CurrentUser.get();
 
         Order order =
                 orderRepository.findById(id)
@@ -152,7 +144,7 @@ public class OrderService {
 
     @Transactional
     public void cancelOrder(UUID id) {
-        UserPrincipal principal = currentUser();
+        UserPrincipal principal = CurrentUser.get();
         Order order = orderRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new RuntimeException("Заказ не найден"));
         if (!order.getUser().getId().equals(principal.getId())) {
@@ -192,7 +184,7 @@ public class OrderService {
     }
 
     public OrderQrResponse getOrderQr(UUID id) {
-        UserPrincipal principal = currentUser();
+        UserPrincipal principal = CurrentUser.get();
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Заказ не найден"));
         if (!order.getUser().getId().equals(principal.getId())) {
@@ -215,7 +207,7 @@ public class OrderService {
 
     @Transactional
     public OrderResponse completeOrderByQr(String qrToken) {
-        UserPrincipal principal = currentUser();
+        UserPrincipal principal = CurrentUser.get();
         if (principal.getRole() != Role.BUSINESS) {
             throw new IllegalStateException("Только бизнес может подтвердить заказ");
         }
@@ -289,11 +281,6 @@ public class OrderService {
             }
         }
         foodListingRepository.save(listing);
-    }
-
-    private UserPrincipal currentUser() {
-        return (UserPrincipal) SecurityContextHolder.getContext()
-                .getAuthentication().getPrincipal();
     }
 
     private LocalDateTime almatyNow() {
