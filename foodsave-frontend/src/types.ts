@@ -71,6 +71,12 @@ export interface BusinessApplication {
   latitude: number; longitude: number; contactPhone: string; bin: string;
 }
 
+export interface GeocodingResponse {
+  address: string;
+  latitude: number;
+  longitude: number;
+}
+
 export interface Impact { foodSavedKg: number; moneySaved: number; co2SavedKg: number; }
 export type PaymentStatus = "PENDING" | "SUCCESS" | "FAILED";
 export interface Payment { id: string; orderId: string; amount: number; status: PaymentStatus; createdAt: string; }

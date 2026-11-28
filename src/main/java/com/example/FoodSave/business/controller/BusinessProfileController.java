@@ -2,6 +2,7 @@ package com.example.FoodSave.business.controller;
 
 import com.example.FoodSave.business.dto.BusinessProfileResponse;
 import com.example.FoodSave.business.dto.BusinessProfileRequest;
+import com.example.FoodSave.business.dto.GeocodingResponse;
 import com.example.FoodSave.business.service.BusinessProfileService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +43,25 @@ public class BusinessProfileController {
 
         return ResponseEntity.ok(
                 businessProfileService.updateProfile(request)
+        );
+    }
+
+    @GetMapping("/geocode")
+    public ResponseEntity<GeocodingResponse> geocodeAddress(
+            @RequestParam String address
+    ) {
+        return ResponseEntity.ok(
+                businessProfileService.geocodeAddress(address)
+        );
+    }
+
+    @GetMapping("/reverse-geocode")
+    public ResponseEntity<GeocodingResponse> reverseGeocode(
+            @RequestParam double latitude,
+            @RequestParam double longitude
+    ) {
+        return ResponseEntity.ok(
+                businessProfileService.reverseGeocode(latitude, longitude)
         );
     }
 }

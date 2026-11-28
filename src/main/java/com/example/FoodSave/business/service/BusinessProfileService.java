@@ -8,6 +8,7 @@ import com.example.FoodSave.auth.repo.UserRepository;
 import com.example.FoodSave.business.ai.BusinessApplicationReviewer;
 import com.example.FoodSave.business.dto.BusinessProfileRequest;
 import com.example.FoodSave.business.dto.BusinessProfileResponse;
+import com.example.FoodSave.business.dto.GeocodingResponse;
 import com.example.FoodSave.business.entity.BusinessProfile;
 import com.example.FoodSave.business.repo.BusinessProfileRepository;
 import com.example.FoodSave.moderation.ModerationStatus;
@@ -116,18 +117,63 @@ public class BusinessProfileService {
     private GeocodingService.Coordinates resolveCoordinates(
             City city, String address, Double latitude, Double longitude) {
         if (latitude == null && longitude == null) {
-            return geocodingService.geocode(city, address);
+            GeocodingService.Coordinates coordinates = geocodingService.geocode(city, address);
+            validateCityCoordinates(city, coordinates.latitude(), coordinates.longitude());
+            return coordinates;
         }
         if (latitude == null || longitude == null
                 || !Double.isFinite(latitude) || !Double.isFinite(longitude)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Укажи обе координаты метки на карте");
         }
+        validateCityCoordinates(city, latitude, longitude);
+        return new GeocodingService.Coordinates(latitude, longitude);
+    }
+
+    public GeocodingResponse geocodeAddress(String address) {
+        if (address == null || address.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Укажи адрес");
+        }
+        City city = currentBusinessCity();
+        GeocodingService.Coordinates coordinates = geocodingService.geocode(city, address.trim());
+        validateCityCoordinates(city, coordinates.latitude(), coordinates.longitude());
+        return new GeocodingResponse(address.trim(), coordinates.latitude(), coordinates.longitude());
+    }
+
+    public GeocodingResponse reverseGeocode(double latitude, double longitude) {
+        validateCoordinates(latitude, longitude);
+        City city = currentBusinessCity();
+        validateCityCoordinates(city, latitude, longitude);
+        String address = geocodingService.reverseGeocode(latitude, longitude);
+        return new GeocodingResponse(address, latitude, longitude);
+    }
+
+    private City currentBusinessCity() {
+        User user = userRepository.findById(CurrentUser.get().getId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Пользователь не найден"));
+        City city = user.getCity();
+        if (city == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "У пользователя не указан город");
+        }
+        return city;
+    }
+
+    private static void validateCoordinates(double latitude, double longitude) {
+        if (!Double.isFinite(latitude) || !Double.isFinite(longitude)
+                || latitude < -90 || latitude > 90
+                || longitude < -180 || longitude > 180) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Указаны некорректные координаты");
+        }
+    }
+
+    private static void validateCityCoordinates(City city, double latitude, double longitude) {
         double[] center = CITY_CENTERS.get(city);
         if (center != null && distanceKm(latitude, longitude, center[0], center[1]) > MAX_CITY_RADIUS_KM) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Метка на карте должна находиться в пределах города " + city.getDisplayName());
         }
-        return new GeocodingService.Coordinates(latitude, longitude);
     }
 
     private static double distanceKm(double lat1, double lon1, double lat2, double lon2) {

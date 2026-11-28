@@ -1,6 +1,7 @@
 import type {
   AdminApplication,
   BusinessApplication,
+  GeocodingResponse,
   ModerationStatus,
   Nutrition,
   AdminListing,
@@ -287,6 +288,14 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(data)
     }),
+
+  geocodeBusinessAddress: (address: string) =>
+    request<GeocodingResponse>(`/business/profile/geocode?address=${encodeURIComponent(address)}`),
+
+  reverseGeocodeBusinessLocation: (latitude: number, longitude: number) =>
+    request<GeocodingResponse>(
+      `/business/profile/reverse-geocode?latitude=${latitude}&longitude=${longitude}`
+    ),
 
 
   /* =========================================================
