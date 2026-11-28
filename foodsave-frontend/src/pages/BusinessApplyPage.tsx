@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { ArrowLeft, ArrowRight, CheckCircle2, ClipboardCheck, MapPin, Send, ShieldCheck, Store } from "lucide-react";
 import { BusinessLocationPicker, type BusinessLocation } from "../BusinessLocationPicker";
+import { api } from "../api";
 import type { BusinessApplication, BusinessProfile, BusinessType, City } from "../types";
 import { cityName } from "../utils";
 import { StoreArt } from "../visuals";
@@ -36,6 +37,12 @@ export function BusinessApplyPage({business, city, onSubmit, onBack}: Props) {
   const [step, setStep] = useState(0);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [locationSyncing, setLocationSyncing] = useState(false);
+  const [locationStatus, setLocationStatus] = useState("");
+  const [locationError, setLocationError] = useState("");
+  const requestId = useRef(0);
+  const skipNextAddressGeocode = useRef(false);
+  const initialAddress = useRef(true);
   const [form, setForm] = useState({
     businessName: business?.businessName ?? "",
     businessType: (business?.businessType ?? "") as BusinessType | "",
@@ -49,6 +56,86 @@ export function BusinessApplyPage({business, city, onSubmit, onBack}: Props) {
       ? {latitude: business.latitude, longitude: business.longitude} : null);
   const set = (key: keyof typeof form, value: string) => setForm(previous => ({...previous, [key]: value}));
 
+  useEffect(() => {
+    if (initialAddress.current) {
+      initialAddress.current = false;
+      return;
+    }
+    if (skipNextAddressGeocode.current) {
+      skipNextAddressGeocode.current = false;
+      return;
+    }
+
+    const address = form.address.trim();
+    const currentRequest = ++requestId.current;
+    if (!address) {
+      setLocation(null);
+      setLocationSyncing(false);
+      setLocationStatus("");
+      setLocationError("");
+      return;
+    }
+
+    setLocationSyncing(true);
+    setLocationStatus("Ищу адрес на карте…");
+    setLocationError("");
+    const timer = window.setTimeout(() => {
+      void api.geocodeBusinessAddress(address).then(result => {
+        if (currentRequest !== requestId.current) return;
+        setLocation({latitude: result.latitude, longitude: result.longitude});
+        setLocationStatus("Адрес найден, метка перемещена.");
+        setLocationSyncing(false);
+      }).catch((geocodingError: unknown) => {
+        if (currentRequest !== requestId.current) return;
+        setLocation(null);
+        setLocationStatus("");
+        setLocationError(geocodingError instanceof Error
+          ? geocodingError.message : "Не удалось найти этот адрес.");
+        setLocationSyncing(false);
+      });
+    }, 700);
+
+    return () => window.clearTimeout(timer);
+  }, [form.address]);
+
+  function changeAddress(address: string) {
+    requestId.current++;
+    setLocation(null);
+    setLocationSyncing(Boolean(address.trim()));
+    setLocationStatus(address.trim() ? "Ожидаю завершения ввода…" : "");
+    setLocationError("");
+    set("address", address);
+  }
+
+  function changeLocation(next: BusinessLocation) {
+    const currentRequest = ++requestId.current;
+    setLocation(next);
+    setLocationError("");
+    if (!next) {
+      setLocationSyncing(false);
+      setLocationStatus("");
+      return;
+    }
+
+    setLocationSyncing(true);
+    setLocationStatus("Определяю адрес выбранной точки…");
+    void api.reverseGeocodeBusinessLocation(next.latitude, next.longitude).then(result => {
+      if (currentRequest !== requestId.current) return;
+      if (result.address !== form.address) {
+        skipNextAddressGeocode.current = true;
+        set("address", result.address);
+      }
+      setLocationStatus("Адрес и метка синхронизированы.");
+      setLocationSyncing(false);
+    }).catch((geocodingError: unknown) => {
+      if (currentRequest !== requestId.current) return;
+      setLocationStatus("");
+      setLocationError(geocodingError instanceof Error
+        ? geocodingError.message : "Не удалось определить адрес этой точки.");
+      setLocationSyncing(false);
+    });
+  }
+
   const approved = business?.status === "APPROVED";
   const title = !business ? "Заявка на подключение" : approved ? "Профиль заведения" : "Заявка на подключение";
 
@@ -58,6 +145,8 @@ export function BusinessApplyPage({business, city, onSubmit, onBack}: Props) {
       if (!form.businessType) return "Выбери тип заведения";
     }
     if (index === 1) {
+      if (locationSyncing) return "Подожди, пока адрес и карта синхронизируются";
+      if (locationError) return locationError;
       if (!form.address.trim()) return "Укажи адрес";
       if (!location) return "Поставь метку заведения на карте";
     }
@@ -78,7 +167,7 @@ export function BusinessApplyPage({business, city, onSubmit, onBack}: Props) {
     if (step < STEPS.length - 1) { next(); return; }
     const problem = [0, 1, 2].map(stepError).find(Boolean) ?? "";
     setError(problem);
-    if (problem || !location || !form.businessType || sending) return;
+    if (problem || !location || !form.businessType || sending || locationSyncing) return;
     setSending(true);
     try {
       await onSubmit({
@@ -133,8 +222,10 @@ export function BusinessApplyPage({business, city, onSubmit, onBack}: Props) {
           <label className="field"><span>Описание · необязательно</span><textarea value={form.description} maxLength={1000} onChange={e => set("description", e.target.value)} placeholder="Что вы готовите, какие продукты чаще остаются в конце дня"/></label>
         </>}
         {step === 1 && <>
-          <label className="field"><span>Адрес в городе {cityName(city)}</span><input value={form.address} maxLength={255} onChange={e => set("address", e.target.value)} placeholder="ул. Абая 10"/></label>
-          <BusinessLocationPicker city={city} value={location} onChange={setLocation}/>
+          <label className="field"><span>Адрес в городе {cityName(city)}</span><input value={form.address} maxLength={255} onChange={e => changeAddress(e.target.value)} placeholder="ул. Абая 10"/></label>
+          <BusinessLocationPicker city={city} value={location} onChange={changeLocation}/>
+          {locationStatus && <p className="location-sync-status" role="status">{locationStatus}</p>}
+          {locationError && <p className="form-error" role="alert">{locationError}</p>}
         </>}
         {step === 2 && <>
           <label className="field"><span>Контактный телефон</span><input type="tel" value={form.contactPhone} onChange={e => set("contactPhone", e.target.value)} placeholder="+77001234567"/></label>
@@ -155,7 +246,7 @@ export function BusinessApplyPage({business, city, onSubmit, onBack}: Props) {
         {step > 0 ? <button type="button" className="ghost-btn" onClick={() => { setError(""); setStep(s => s - 1); }}><ArrowLeft size={16}/> Назад</button> : <span/>}
         {step < STEPS.length - 1
           ? <button type="submit" className="primary-btn">Далее <ArrowRight size={16}/></button>
-          : <button type="submit" className="primary-btn" disabled={sending}><Send size={16}/> {sending ? "Отправляем…" : approved ? "Сохранить" : business ? "Отправить повторно" : "Отправить заявку"}</button>}
+          : <button type="submit" className="primary-btn" disabled={sending || locationSyncing}><Send size={16}/> {sending ? "Отправляем…" : approved ? "Сохранить" : business ? "Отправить повторно" : "Отправить заявку"}</button>}
       </div>
     </form>
   </section>;

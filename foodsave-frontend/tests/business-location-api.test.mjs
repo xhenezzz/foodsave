@@ -47,3 +47,31 @@ test('создание и обновление бизнес-профиля от�
     globalThis.localStorage = previousStorage;
   }
 });
+
+test('геокодирование адреса и выбранной точки использует отдельные GET-запросы', async () => {
+  const previousFetch = globalThis.fetch;
+  const previousStorage = globalThis.localStorage;
+  const requests = [];
+  globalThis.localStorage = { getItem: () => 'test-jwt' };
+  globalThis.fetch = async (url, options) => {
+    requests.push({ url: String(url), method: options.method ?? 'GET' });
+    return new Response(JSON.stringify({
+      address: 'ул. Абая, 10',
+      latitude: 43.238949,
+      longitude: 76.889709
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  try {
+    await api.geocodeBusinessAddress('ул. Абая, 10');
+    await api.reverseGeocodeBusinessLocation(43.238949, 76.889709);
+
+    assert.equal(requests[0].url, 'http://localhost:8081/api/business/profile/geocode?address=%D1%83%D0%BB.%20%D0%90%D0%B1%D0%B0%D1%8F%2C%2010');
+    assert.equal(requests[0].method, 'GET');
+    assert.equal(requests[1].url, 'http://localhost:8081/api/business/profile/reverse-geocode?latitude=43.238949&longitude=76.889709');
+    assert.equal(requests[1].method, 'GET');
+  } finally {
+    globalThis.fetch = previousFetch;
+    globalThis.localStorage = previousStorage;
+  }
+});
